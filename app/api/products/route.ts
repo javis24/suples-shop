@@ -1,0 +1,117 @@
+import { type NextRequest } from "next/server";
+import {
+  created,
+  getPagination,
+  handleApiError,
+  ok,
+  paginationMeta,
+} from "@/lib/api";
+import { requireUser } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { slugify } from "@/lib/slug";
+import { productSchema } from "@/lib/validators";
+
+export const runtime = "nodejs";
+
+const productInclude = {
+  category: true,
+  brand: true,
+  variants: { orderBy: { id: "asc" as const } },
+  images: { orderBy: [{ primary: "desc" as const }, { sortOrder: "asc" as const }] },
+};
+
+export async function GET(request: NextRequest) {
+  try {
+    const searchParams = request.nextUrl.searchParams;
+    const { page, limit, skip } = getPagination(searchParams);
+    const q = searchParams.get("q")?.trim();
+    const category = searchParams.get("category")?.trim();
+    const brand = searchParams.get("brand")?.trim();
+    const includeAll = searchParams.get("all") === "true";
+    const lowStock = searchParams.get("lowStock") === "true";
+    const lowStockAt = Math.max(0, Number(searchParams.get("lowStockAt") ?? 5) || 5);
+
+    if (includeAll) await requireUser();
+
+    const where = {
+      status: includeAll ? undefined : ("ACTIVE" as const),
+      category: category ? { slug: category } : undefined,
+      brand: brand ? { slug: brand } : undefined,
+      OR: q
+        ? [
+            { name: { contains: q } },
+            { description: { contains: q } },
+            { variants: { some: { sku: { contains: q } } } },
+            { variants: { some: { microsipName: { contains: q } } } },
+          ]
+        : undefined,
+      variants: lowStock
+        ? { some: { active: true, stock: { lte: lowStockAt } } }
+        : { some: { active: true } },
+    };
+
+    const [products, total] = await prisma.$transaction([
+      prisma.product.findMany({
+        where,
+        include: productInclude,
+        orderBy: [{ featured: "desc" }, { updatedAt: "desc" }],
+        skip,
+        take: limit,
+      }),
+      prisma.product.count({ where }),
+    ]);
+
+    return ok(products, paginationMeta(total, page, limit));
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    await requireUser(["ADMIN", "STAFF"]);
+    const data = productSchema.parse(await request.json());
+
+    const product = await prisma.product.create({
+      data: {
+        name: data.name,
+        slug: slugify(data.slug || data.name),
+        description: data.description || null,
+        categoryId: data.categoryId,
+        brandId: data.brandId || null,
+        status: data.status ?? "ACTIVE",
+        featured: data.featured ?? false,
+        seoTitle: data.seoTitle || null,
+        seoDescription: data.seoDescription || null,
+        variants: {
+          create: data.variants.map((variant) => ({
+            ...variant,
+            barcode: variant.barcode || null,
+            microsipName: variant.microsipName || null,
+            flavor: variant.flavor || null,
+            presentation: variant.presentation || null,
+            unit: variant.unit ?? "Pieza",
+            stock: variant.stock ?? 0,
+            lowStockAt: variant.lowStockAt ?? 5,
+            active: variant.active ?? true,
+          })),
+        },
+        images: data.images
+          ? {
+              create: data.images.map((image) => ({
+                ...image,
+                alt: image.alt || null,
+                sortOrder: image.sortOrder ?? 0,
+                primary: image.primary ?? false,
+              })),
+            }
+          : undefined,
+      },
+      include: productInclude,
+    });
+
+    return created(product);
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
