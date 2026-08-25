@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../app/generated/prisma"
@@ -10,4 +5,407 @@ generator client {
 
 datasource db {
   provider = "mysql"
+}
+
+enum UserRole {
+  ADMIN
+  STAFF
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum InventoryMovementType {
+  IMPORT
+  ADJUSTMENT
+  SALE
+  RETURN
+  PURCHASE
+  CANCELLATION
+}
+
+enum ImportStatus {
+  PROCESSING
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+enum ImportRowStatus {
+  CREATED
+  UPDATED
+  SKIPPED
+  ERROR
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  SHIPPED
+  DELIVERED
+  CANCELED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED
+}
+
+model User {
+  id                 Int                  @id @default(autoincrement())
+  name               String               @db.VarChar(120)
+  email              String               @unique @db.VarChar(190)
+  passwordHash       String               @db.VarChar(255)
+  role               UserRole             @default(STAFF)
+  active             Boolean              @default(true)
+  inventoryMovements InventoryMovement[]
+  priceChanges       PriceHistory[]
+  importBatches      ImportBatch[]
+  orderStatusChanges OrderStatusHistory[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@index([role, active])
+}
+
+model Category {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique @db.VarChar(120)
+  slug        String    @unique @db.VarChar(140)
+  description String?   @db.Text
+  active      Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([active, sortOrder])
+}
+
+model Brand {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique @db.VarChar(120)
+  slug      String    @unique @db.VarChar(140)
+  logoUrl   String?   @db.VarChar(500)
+  active    Boolean   @default(true)
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([active, name])
+}
+
+model Product {
+  id             Int              @id @default(autoincrement())
+  name           String           @db.VarChar(255)
+  slug           String           @unique @db.VarChar(280)
+  description    String?          @db.Text
+  categoryId     Int
+  brandId        Int?
+  status         ProductStatus    @default(DRAFT)
+  featured       Boolean          @default(false)
+  seoTitle       String?          @db.VarChar(180)
+  seoDescription String?          @db.VarChar(320)
+  category       Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  brand          Brand?           @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  variants       ProductVariant[]
+  images         ProductImage[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([categoryId, status])
+  @@index([brandId])
+  @@index([name])
+  @@index([featured, status])
+}
+
+model ProductVariant {
+  id                 Int                 @id @default(autoincrement())
+  productId          Int
+  sku                String              @unique @db.VarChar(100)
+  barcode            String?             @unique @db.VarChar(100)
+  microsipName       String?             @unique @db.VarChar(255)
+  flavor             String?             @db.VarChar(120)
+  presentation       String?             @db.VarChar(120)
+  unit               String              @default("Pieza") @db.VarChar(40)
+  cost               Decimal             @default(0) @db.Decimal(12, 2)
+  price              Decimal             @default(0) @db.Decimal(12, 2)
+  compareAtPrice     Decimal?            @db.Decimal(12, 2)
+  stock              Int                 @default(0)
+  reservedStock      Int                 @default(0)
+  lowStockAt         Int                 @default(5)
+  active             Boolean             @default(true)
+  product            Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  images             ProductImage[]
+  inventoryMovements InventoryMovement[]
+  priceHistory       PriceHistory[]
+  orderItems         OrderItem[]
+  importRows         ImportRow[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([productId, active])
+  @@index([stock, lowStockAt])
+  @@index([flavor])
+}
+
+model ProductImage {
+  id        Int             @id @default(autoincrement())
+  productId Int
+  variantId Int?
+  url       String          @db.VarChar(500)
+  alt       String?         @db.VarChar(255)
+  sortOrder Int             @default(0)
+  primary   Boolean         @default(false)
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  createdAt DateTime        @default(now())
+
+  @@index([productId, primary, sortOrder])
+  @@index([variantId])
+}
+
+model InventoryMovement {
+  id            Int                   @id @default(autoincrement())
+  variantId     Int
+  type          InventoryMovementType
+  quantity      Int
+  previousStock Int
+  newStock      Int
+  reason        String?               @db.VarChar(255)
+  reference     String?               @db.VarChar(120)
+  userId        Int?
+  importBatchId Int?
+  orderId       Int?
+  variant       ProductVariant        @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  user          User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  importBatch   ImportBatch?          @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  order         Order?                @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdAt     DateTime              @default(now())
+
+  @@index([variantId, createdAt])
+  @@index([type, createdAt])
+  @@index([importBatchId])
+  @@index([orderId])
+}
+
+model PriceHistory {
+  id            Int            @id @default(autoincrement())
+  variantId     Int
+  previousPrice Decimal        @db.Decimal(12, 2)
+  newPrice      Decimal        @db.Decimal(12, 2)
+  reason        String?        @db.VarChar(255)
+  userId        Int?
+  importBatchId Int?
+  variant       ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  importBatch   ImportBatch?   @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  createdAt     DateTime       @default(now())
+
+  @@index([variantId, createdAt])
+  @@index([importBatchId])
+}
+
+model ImportBatch {
+  id                 Int                 @id @default(autoincrement())
+  fileName           String              @db.VarChar(255)
+  status             ImportStatus        @default(PROCESSING)
+  totalRows          Int                 @default(0)
+  createdRows        Int                 @default(0)
+  updatedRows        Int                 @default(0)
+  skippedRows        Int                 @default(0)
+  errorRows          Int                 @default(0)
+  updatePrices       Boolean             @default(false)
+  markupPercent      Decimal?            @db.Decimal(7, 2)
+  userId             Int?
+  user               User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  rows               ImportRow[]
+  inventoryMovements InventoryMovement[]
+  priceHistory       PriceHistory[]
+  startedAt          DateTime            @default(now())
+  finishedAt         DateTime?
+
+  @@index([status, startedAt])
+  @@index([userId])
+}
+
+model ImportRow {
+  id            Int             @id @default(autoincrement())
+  importBatchId Int
+  variantId     Int?
+  sourceRow     Int
+  status        ImportRowStatus
+  categoryName  String?         @db.VarChar(120)
+  productName   String?         @db.VarChar(255)
+  stock         Int?
+  cost          Decimal?        @db.Decimal(12, 2)
+  message       String?         @db.Text
+  sourceData    Json?
+  importBatch   ImportBatch     @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  variant       ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  createdAt     DateTime        @default(now())
+
+  @@index([importBatchId, status])
+  @@index([variantId])
+}
+
+model Customer {
+  id        Int       @id @default(autoincrement())
+  firstName String    @db.VarChar(100)
+  lastName  String    @db.VarChar(120)
+  email     String?   @unique @db.VarChar(190)
+  phone     String?   @db.VarChar(30)
+  active    Boolean   @default(true)
+  addresses Address[]
+  orders    Order[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([firstName, lastName])
+  @@index([phone])
+}
+
+model Address {
+  id           Int      @id @default(autoincrement())
+  customerId   Int
+  label        String?  @db.VarChar(80)
+  recipient    String   @db.VarChar(180)
+  phone        String?  @db.VarChar(30)
+  street       String   @db.VarChar(255)
+  exteriorNo   String?  @db.VarChar(40)
+  interiorNo   String?  @db.VarChar(40)
+  neighborhood String?  @db.VarChar(160)
+  city         String   @db.VarChar(120)
+  state        String   @db.VarChar(120)
+  postalCode   String   @db.VarChar(12)
+  references   String?  @db.Text
+  default      Boolean  @default(false)
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([customerId, default])
+}
+
+model Order {
+  id                 Int                  @id @default(autoincrement())
+  orderNumber        String               @unique @db.VarChar(40)
+  customerId         Int?
+  couponId           Int?
+  status             OrderStatus          @default(PENDING)
+  paymentStatus      PaymentStatus        @default(PENDING)
+  subtotal           Decimal              @db.Decimal(12, 2)
+  discount           Decimal              @default(0) @db.Decimal(12, 2)
+  shipping           Decimal              @default(0) @db.Decimal(12, 2)
+  total              Decimal              @db.Decimal(12, 2)
+  customerName       String               @db.VarChar(220)
+  customerEmail      String?              @db.VarChar(190)
+  customerPhone      String?              @db.VarChar(30)
+  shippingAddress    Json
+  notes              String?              @db.Text
+  customer           Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  coupon             Coupon?              @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  items              OrderItem[]
+  statusHistory      OrderStatusHistory[]
+  inventoryMovements InventoryMovement[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@index([status, createdAt])
+  @@index([paymentStatus, createdAt])
+  @@index([customerId])
+  @@index([couponId])
+}
+
+model OrderItem {
+  id          Int             @id @default(autoincrement())
+  orderId     Int
+  variantId   Int?
+  sku         String          @db.VarChar(100)
+  productName String          @db.VarChar(255)
+  variantName String?         @db.VarChar(255)
+  quantity    Int
+  unitPrice   Decimal         @db.Decimal(12, 2)
+  lineTotal   Decimal         @db.Decimal(12, 2)
+  order       Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant     ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([variantId])
+}
+
+model OrderStatusHistory {
+  id        Int          @id @default(autoincrement())
+  orderId   Int
+  from      OrderStatus?
+  to        OrderStatus
+  note      String?      @db.VarChar(255)
+  userId    Int?
+  order     Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user      User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime     @default(now())
+
+  @@index([orderId, createdAt])
+  @@index([userId])
+}
+
+model Coupon {
+  id              Int        @id @default(autoincrement())
+  code            String     @unique @db.VarChar(60)
+  description     String?    @db.VarChar(255)
+  type            CouponType
+  value           Decimal    @db.Decimal(12, 2)
+  minimumAmount   Decimal?   @db.Decimal(12, 2)
+  maximumDiscount Decimal?   @db.Decimal(12, 2)
+  usageLimit      Int?
+  usageCount      Int        @default(0)
+  startsAt        DateTime?
+  endsAt          DateTime?
+  active          Boolean    @default(true)
+  orders          Order[]
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([active, startsAt, endsAt])
+}
+
+model Banner {
+  id        Int       @id @default(autoincrement())
+  title     String    @db.VarChar(180)
+  subtitle  String?   @db.VarChar(255)
+  imageUrl  String    @db.VarChar(500)
+  linkUrl   String?   @db.VarChar(500)
+  position  String    @default("HOME_HERO") @db.VarChar(80)
+  sortOrder Int       @default(0)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([position, active, sortOrder])
+}
+
+model Setting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique @db.VarChar(120)
+  value     String   @db.Text
+  group     String   @default("store") @db.VarChar(80)
+  public    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([group, public])
 }
