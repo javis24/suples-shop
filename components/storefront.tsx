@@ -159,10 +159,20 @@ export function Storefront() {
 
       <header className="shop-header">
         <div className="shop-container shop-header-row">
-          <Link className="shop-logo" href="/" aria-label="Suples Shop, inicio">
-            <span className="shop-logo-symbol">S</span>
-            <span><strong>SUPLES</strong><small>SHOP</small></span>
-          </Link>
+        <Link
+  className="shop-logo shop-logo-header"
+  href="/"
+  aria-label="Suples Shop, inicio"
+>
+  <Image
+    className="shop-logo-image"
+    src="/logo_uno.png"
+    alt="Suples Shop"
+    fill
+    sizes="170px"
+    priority
+  />
+</Link>
 
           <form className="shop-search" onSubmit={submitSearch}>
             <input
@@ -273,7 +283,19 @@ export function Storefront() {
         </div>
       </section>
 
-      <footer className="shop-footer"><div className="shop-container"><div className="shop-logo footer"><span className="shop-logo-symbol">S</span><span><strong>SUPLES</strong><small>SHOP</small></span></div><p>Suplementos deportivos para toda la familia deportista.</p><Link href="/dashboard">Panel administrativo</Link></div></footer>
+      <footer className="shop-footer"><div className="shop-container"><Link
+  className="shop-logo shop-logo-footer"
+  href="/"
+  aria-label="Suples Shop, inicio"
+>
+  <Image
+    className="shop-logo-image"
+    src="/logo_uno.png"
+    alt="Suples Shop"
+    fill
+    sizes="150px"
+  />
+</Link><p>Suplementos deportivos para toda la familia deportista.</p><Link href="/dashboard">Panel administrativo</Link></div></footer>
     </main>
   );
 }

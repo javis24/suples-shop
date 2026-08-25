@@ -113,16 +113,17 @@ button { cursor: pointer; }
 
 /* Storefront catalog redesign */
 .shop-page {
-  --shop-blue: #2455d6;
-  --shop-blue-dark: #173da8;
-  --shop-red: #ef3d36;
-  --shop-green: #079454;
-  --shop-text: #111827;
-  --shop-muted: #667085;
-  --shop-border: #e2e6eb;
+  --shop-blue: #ff210d;
+  --shop-blue-dark: #c81709;
+  --shop-red: #ff210d;
+  --shop-green: #129447;
+  --shop-text: #211f1f;
+  --shop-muted: #716c6b;
+  --shop-border: #e7e1df;
+
   min-height: 100vh;
   color: var(--shop-text);
-  background: #fff;
+  background: #faf9f8;
 }
 
 .shop-container {
@@ -1129,4 +1130,221 @@ th, td { padding: 10px 8px; border-bottom: 1px solid #edf0ed; }
   .hero-proof span:nth-child(2) { display: none; }
   .access-card { padding: 30px 23px; }
   .access-screen::before { width: 100%; height: 22%; clip-path: polygon(0 0,100% 0,100% 55%,0 100%); }
+}
+
+
+/* Identidad visual Suples Shop */
+.shop-announcement {
+  color: #ffffff;
+  background: #ff210d;
+}
+
+.shop-announcement span::before {
+  color: #ffffff;
+}
+
+.shop-header {
+  border-top: 4px solid #211f1f;
+  background: #ffffff;
+}
+
+.shop-logo {
+  display: block;
+  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #ff210d;
+}
+
+.shop-logo-header {
+  width: 168px;
+  height: 74px;
+}
+
+.shop-logo-footer {
+  width: 145px;
+  height: 64px;
+}
+
+.shop-logo-image {
+  object-fit: cover;
+  object-position: center;
+}
+
+.shop-search:focus-within {
+  border-color: #ff210d;
+  box-shadow: 0 0 0 3px rgb(255 33 13 / 12%);
+}
+
+.shop-search-submit,
+.shop-side-search button,
+.shop-add-cart,
+.shop-side-help button {
+  background: #ff210d;
+}
+
+.shop-search-submit:hover,
+.shop-side-search button:hover,
+.shop-add-cart:hover,
+.shop-side-help button:hover {
+  background: #c81709;
+}
+
+.shop-action-icon {
+  color: #ff210d;
+  background: #fff0ed;
+}
+
+.shop-category-bar {
+  border-bottom: 4px solid #ff210d;
+  background: #211f1f;
+}
+
+.shop-category-bar strong {
+  color: #ffffff;
+}
+
+.shop-sidebar {
+  border-color: #e7e1df;
+  box-shadow: 0 5px 18px rgb(33 31 31 / 5%);
+}
+
+.shop-category:hover {
+  color: #ff210d;
+  background: #fff2ef;
+}
+
+.shop-category.active {
+  color: #ff210d;
+}
+
+.shop-category.active .shop-checkbox {
+  border-color: #ff210d;
+}
+
+.shop-side-help {
+  background:
+    linear-gradient(
+      145deg,
+      #211f1f 0%,
+      #211f1f 55%,
+      #5f1812 100%
+    );
+}
+
+.shop-side-help > span {
+  color: #ff8178;
+}
+
+.shop-catalog-intro {
+  background:
+    linear-gradient(
+      110deg,
+      #211f1f 0%,
+      #211f1f 58%,
+      #ff210d 58%,
+      #d9180a 100%
+    );
+}
+
+.shop-catalog-intro::after {
+  border-color: rgb(255 255 255 / 10%);
+}
+
+.shop-trust {
+  background: rgb(33 31 31 / 35%);
+}
+
+.shop-trust strong {
+  color: #ffffff;
+}
+
+.shop-fast-filters button:hover,
+.shop-fast-filters button.active {
+  border-color: #ff210d;
+  color: #ffffff;
+  background: #ff210d;
+}
+
+.shop-fast-filters button span,
+.shop-fast-filters button.active span {
+  color: #ffffff;
+}
+
+.shop-grid-icon,
+.shop-product-category {
+  color: #ff210d;
+}
+
+.shop-product-card:hover {
+  border-color: #ff8d82;
+  box-shadow: 0 12px 32px rgb(109 24 15 / 13%);
+}
+
+.shop-product-label {
+  background: #211f1f;
+}
+
+.shop-product-label.featured {
+  background: #211f1f;
+}
+
+.shop-product-label.sale {
+  background: #ff210d;
+}
+
+.shop-product-placeholder {
+  color: #ffffff;
+  background:
+    linear-gradient(
+      145deg,
+      #ff210d 0%,
+      #c81709 48%,
+      #211f1f 49%,
+      #211f1f 100%
+    );
+  box-shadow: 10px 12px 20px rgb(85 22 15 / 20%);
+}
+
+.shop-product-placeholder span {
+  color: #ffffff;
+}
+
+.shop-product-price strong {
+  color: #e02012;
+}
+
+.shop-active-filters button {
+  border-color: #ffc6c0;
+  color: #d71b0d;
+  background: #fff1ef;
+}
+
+.shop-mobile-categories button.active {
+  border-color: #ff210d;
+  color: #ffffff;
+  background: #ff210d;
+}
+
+.shop-footer {
+  border-top: 4px solid #ff210d;
+  color: #c7c2c1;
+  background: #211f1f;
+}
+
+.shop-footer a {
+  color: #ff8178;
+}
+
+@media (max-width: 620px) {
+  .shop-logo-header {
+    width: 128px;
+    height: 58px;
+  }
+
+  .shop-logo-footer {
+    width: 130px;
+    height: 58px;
+  }
 }
