@@ -59,16 +59,16 @@ export async function GET(request: NextRequest) {
           : { some: { active: true } },
     };
 
-    const [products, total] = await prisma.$transaction([
-      prisma.product.findMany({
-        where,
-        include: productInclude,
-        orderBy: [{ featured: "desc" }, { updatedAt: "desc" }],
-        skip,
-        take: limit,
-      }),
-      prisma.product.count({ where }),
-    ]);
+    // Son consultas de lectura independientes. Ejecutarlas sin transacción
+    // evita competir por una conexión transaccional en pools remotos pequeños.
+    const products = await prisma.product.findMany({
+      where,
+      include: productInclude,
+      orderBy: [{ featured: "desc" }, { updatedAt: "desc" }],
+      skip,
+      take: limit,
+    });
+    const total = await prisma.product.count({ where });
 
     return ok(products, paginationMeta(total, page, limit));
   } catch (error) {
