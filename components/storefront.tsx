@@ -271,7 +271,9 @@ export function Storefront() {
                       <h2>{product.name}</h2>
                       <p className="shop-product-variant">{product.brand?.name || variant?.presentation || variant?.flavor || "Suplemento deportivo"}{extraVariants > 0 ? ` · +${extraVariants} opciones` : ""}</p>
                       <div className="shop-product-price"><strong>{money.format(Number(variant?.price ?? 0))}</strong>{hasDiscount ? <del>{money.format(Number(variant.compareAtPrice))}</del> : null}</div>
-                      <div className={stock > 0 ? "shop-stock" : "shop-stock sold-out"}>{stock > 0 ? `EN STOCK: ${stock}` : "PRODUCTO AGOTADO"}</div>
+                      <div className={stock > 0 ? "shop-stock" : "shop-stock sold-out"}>
+                        {stock > 0 ? "DISPONIBLE" : "PRODUCTO AGOTADO"}
+                      </div>
                       <ul><li>Producto original</li><li>Existencia actualizada</li>{product.variants.length > 1 ? <li>Opciones de sabor o presentación</li> : null}</ul>
                     </div>
                     <button className="shop-add-cart" disabled={stock < 1} onClick={() => setCartCount((count) => count + 1)} type="button">{stock > 0 ? "Agregar al carrito" : "Sin existencia"}</button>

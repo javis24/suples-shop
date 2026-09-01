@@ -2,6 +2,7 @@
 
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { AdminSidebar } from "@/components/admin-sidebar";
 
 type User = { id: number; name: string; email: string; role: "ADMIN" | "STAFF" };
 type DashboardData = {
@@ -85,16 +86,16 @@ export function DashboardClient() {
     event.preventDefault();
     const form = event.currentTarget;
     const file = fileRef.current?.files?.[0];
-    if (!file) return setNotice("Selecciona el archivo EXISTENCIA.xlsx.");
+    if (!file) return setNotice("Selecciona el archivo ExportacionWeb.xlsx.");
     setBusy(true);
-    setNotice("Procesando el archivo; puede tardar unos segundos…");
+    setNotice("Procesando el catálogo; la primera carga puede tardar varios minutos…");
     const data = new FormData(form);
     try {
-      const result = await api<{ totalRows: number; createdRows: number; updatedRows: number; errorRows: number }>("/api/imports/products", {
+      const result = await api<{ totalRows: number; createdRows: number; updatedRows: number; skippedRows: number; errorRows: number }>("/api/imports/products", {
         method: "POST",
         body: data,
       });
-      setNotice(`Importación terminada: ${result.createdRows} creados, ${result.updatedRows} actualizados y ${result.errorRows} errores.`);
+      setNotice(`Importación terminada: ${result.createdRows} creados, ${result.updatedRows} actualizados, ${result.skippedRows} omitidos y ${result.errorRows} errores.`);
       form.reset();
       await loadDashboard();
     } catch (error) {
@@ -140,17 +141,7 @@ export function DashboardClient() {
 
   return (
     <main className="admin-shell">
-      <aside className="sidebar">
-        <Link className="brand-lockup light" href="/"><span className="brand-mark">S</span><span><strong>SUPLES</strong><small>ADMIN</small></span></Link>
-        <nav>
-          <a className="active" href="#resumen"><span>◫</span> Resumen</a>
-          <a href="#importar"><span>⇧</span> Importar Excel</a>
-          <a href="#inventario"><span>▤</span> Inventario</a>
-          <a href="#pedidos"><span>◉</span> Pedidos</a>
-          <Link href="/api/products?all=true"><span>◇</span> API productos</Link>
-        </nav>
-        <div className="sidebar-profile"><span>{dashboard.user.name[0]?.toUpperCase()}</span><div><strong>{dashboard.user.name}</strong><small>{dashboard.user.role}</small></div></div>
-      </aside>
+      <AdminSidebar active="dashboard" user={dashboard.user} />
 
       <section className="admin-content">
         <header className="admin-topbar">
@@ -166,17 +157,13 @@ export function DashboardClient() {
 
         <section className="admin-grid">
           <article className="panel import-panel" id="importar">
-            <div className="panel-heading"><div><span className="eyebrow dark">ACTUALIZACIÓN DIARIA</span><h2>Importar EXISTENCIA.xlsx</h2></div><span className="status-dot">LISTO</span></div>
-            <p>Lee el nombre del artículo, categoría, unidad, existencia y último costo del reporte de Microsip.</p>
+            <div className="panel-heading"><div><span className="eyebrow dark">ACTUALIZACIÓN DE CATÁLOGO</span><h2>Importar ExportacionWeb.xlsx</h2></div><span className="status-dot">LISTO</span></div>
+            <p>Lee SKU, nombre, categoría, existencia y precio público. Los productos existentes se reconocen por SKU para evitar duplicados.</p>
             <form className="import-form" onSubmit={importExcel}>
-              <label className="file-drop"><input accept=".xlsx" name="file" ref={fileRef} required type="file" /><span className="upload-icon">⇧</span><strong>Selecciona o arrastra el Excel</strong><small>Archivo .xlsx · Máximo 5 MB</small></label>
-              <div className="import-options">
-                <label><span>Margen para productos nuevos</span><div className="percent-input"><input defaultValue="35" max="500" min="0" name="markupPercent" step="0.01" type="number" /><span>%</span></div></label>
-                <label className="switch-row"><span><strong>Actualizar precios existentes</strong><small>Calcula precio de venta usando costo + margen.</small></span><input name="updatePrices" type="checkbox" value="true" /></label>
-              </div>
-              <button className="primary-admin-action" disabled={busy} type="submit">{busy ? "Importando…" : "Importar y actualizar inventario"}</button>
+              <label className="file-drop"><input accept=".xlsx" name="file" ref={fileRef} required type="file" /><span className="upload-icon">⇧</span><strong>Selecciona ExportacionWeb.xlsx</strong><small>Archivo .xlsx · Máximo 5 MB</small></label>
+              <button className="primary-admin-action import-new-action" disabled={busy} type="submit">{busy ? "Importando…" : "Crear nuevos y actualizar precios"}</button>
             </form>
-            <div className="import-warning"><strong>Importante</strong><span>El Excel contiene último costo, no precio de venta. Por seguridad, los precios existentes no cambian a menos que actives la opción.</span></div>
+            <div className="import-warning"><strong>Filtro automático</strong><span>No se importan BETHA, TRT, Hormonas, SARMS ni Péptidos. La descripción, imágenes y SEO que agregues manualmente se conservan.</span></div>
           </article>
 
           <article className="panel" id="inventario">

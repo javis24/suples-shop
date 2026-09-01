@@ -67,10 +67,18 @@ export async function PATCH(request: Request, context: Context) {
             where: { id: variant.id },
             data: {
               sku: variant.sku,
-              barcode: variant.barcode || null,
-              microsipName: variant.microsipName || null,
-              flavor: variant.flavor || null,
-              presentation: variant.presentation || null,
+              barcode:
+                variant.barcode === undefined ? undefined : variant.barcode || null,
+              microsipName:
+                variant.microsipName === undefined
+                  ? undefined
+                  : variant.microsipName || null,
+              flavor:
+                variant.flavor === undefined ? undefined : variant.flavor || null,
+              presentation:
+                variant.presentation === undefined
+                  ? undefined
+                  : variant.presentation || null,
               unit: variant.unit,
               cost: variant.cost,
               price: variant.price,
@@ -131,12 +139,17 @@ export async function PATCH(request: Request, context: Context) {
         await tx.productImage.deleteMany({ where: { productId: id } });
         if (data.images.length > 0) {
           await tx.productImage.createMany({
-            data: data.images.map((image) => ({
+            data: data.images.map((image, index) => ({
               productId: id,
               url: image.url,
               alt: image.alt || null,
-              sortOrder: image.sortOrder ?? 0,
-              primary: image.primary ?? false,
+              sortOrder: index,
+              primary:
+                index ===
+                Math.max(
+                  0,
+                  data.images?.findIndex((item) => item.primary) ?? -1,
+                ),
             })),
           });
         }

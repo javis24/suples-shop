@@ -137,6 +137,8 @@ model ProductVariant {
   sku                String              @unique @db.VarChar(100)
   barcode            String?             @unique @db.VarChar(100)
   microsipName       String?             @unique @db.VarChar(255)
+  sourceKey          String?             @unique @db.VarChar(255)
+  lastSeenAt         DateTime?
   flavor             String?             @db.VarChar(120)
   presentation       String?             @db.VarChar(120)
   unit               String              @default("Pieza") @db.VarChar(40)
@@ -145,7 +147,7 @@ model ProductVariant {
   compareAtPrice     Decimal?            @db.Decimal(12, 2)
   stock              Int                 @default(0)
   reservedStock      Int                 @default(0)
-  lowStockAt         Int                 @default(5)
+  lowStockAt         Int                 @default(1)
   active             Boolean             @default(true)
   product            Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
   images             ProductImage[]
@@ -159,6 +161,7 @@ model ProductVariant {
   @@index([productId, active])
   @@index([stock, lowStockAt])
   @@index([flavor])
+  @@index([lastSeenAt])
 }
 
 model ProductImage {
@@ -251,6 +254,7 @@ model ImportRow {
   productName   String?         @db.VarChar(255)
   stock         Int?
   cost          Decimal?        @db.Decimal(12, 2)
+  price         Decimal?        @db.Decimal(12, 2)
   message       String?         @db.Text
   sourceData    Json?
   importBatch   ImportBatch     @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
