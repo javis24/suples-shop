@@ -165,8 +165,8 @@ export function Storefront() {
   aria-label="Suples Shop, inicio"
 >
   <Image
-    className="shop-logo-image"
-    src="/logo_uno.png"
+    className="shop-logo-image shop-logo-image-light"
+    src="/suples-shop-logo-light.jpeg"
     alt="Suples Shop"
     fill
     sizes="170px"
@@ -291,8 +291,8 @@ export function Storefront() {
   aria-label="Suples Shop, inicio"
 >
   <Image
-    className="shop-logo-image"
-    src="/logo_uno.png"
+    className="shop-logo-image shop-logo-image-dark"
+    src="/suples-shop-logo-dark.jpeg"
     alt="Suples Shop"
     fill
     sizes="150px"

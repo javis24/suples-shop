@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
+import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -68,9 +69,15 @@ export function ProductDetailClient({ product }: { product: ProductDetail }) {
 
       <header className="product-detail-header">
         <div className="shop-container">
-          <Link className="shop-logo" href="/" aria-label="Suples Shop, inicio">
-            <span className="shop-logo-symbol">S</span>
-            <span><strong>SUPLES</strong><small>SHOP</small></span>
+          <Link className="shop-logo shop-logo-header" href="/" aria-label="Suples Shop, inicio">
+            <Image
+              className="shop-logo-image shop-logo-image-light"
+              src="/suples-shop-logo-light.jpeg"
+              alt="Suples Shop"
+              fill
+              sizes="215px"
+              priority
+            />
           </Link>
           <Link className="product-back-link" href="/">← Volver al catálogo</Link>
         </div>
@@ -114,7 +121,7 @@ export function ProductDetailClient({ product }: { product: ProductDetail }) {
         <p>{product.description || "Próximamente agregaremos la descripción completa, beneficios y modo de uso de este producto."}</p>
       </section>
 
-      <footer className="shop-footer"><div className="shop-container"><div className="shop-logo footer"><span className="shop-logo-symbol">S</span><span><strong>SUPLES</strong><small>SHOP</small></span></div><p>Suplementos deportivos para toda la familia deportista.</p><Link href="/dashboard/products">Administrar productos</Link></div></footer>
+      <footer className="shop-footer"><div className="shop-container"><Link className="shop-logo shop-logo-footer" href="/" aria-label="Suples Shop, inicio"><Image className="shop-logo-image shop-logo-image-dark" src="/suples-shop-logo-dark.jpeg" alt="Suples Shop" fill sizes="185px" /></Link><p>Suplementos deportivos para toda la familia deportista.</p><Link href="/dashboard/products">Administrar productos</Link></div></footer>
     </main>
   );
 }
