@@ -24,7 +24,7 @@ Tienda en línea de suplementos deportivos construida con Next.js 16, TypeScript
    pnpm install
    ```
 
-3. Crea un archivo local `.env` —está ignorado por Git— con `DATABASE_URL`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `AUTH_SECRET` y, opcionalmente, `DEFAULT_MARKUP_PERCENT`. No subas este archivo al repositorio. Usa el formato de URL `mysql://USUARIO:CONTRASENA@HOST:PUERTO/BASE_DE_DATOS` y una cadena larga, aleatoria y privada como `AUTH_SECRET`.
+3. Copia `.env.example` como `.env` y configura `DATABASE_URL`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` y `AUTH_SECRET`. No subas `.env` al repositorio. Usa el formato de URL `mysql://USUARIO:CONTRASENA@HOST:PUERTO/BASE_DE_DATOS` y una cadena larga, aleatoria y privada como `AUTH_SECRET`.
 
 4. Verifica que las credenciales de `.env` tengan acceso a la base creada en el paso 1.
 
@@ -41,23 +41,33 @@ Tienda en línea de suplementos deportivos construida con Next.js 16, TypeScript
    pnpm dev
    ```
 
-Abre `http://localhost:3000` para ver la tienda y `http://localhost:3000/dashboard` para configurar al primer administrador.
+Abre `http://localhost:3000` para ver la tienda, `http://localhost:3000/dashboard` para configurar al primer administrador y `http://localhost:3000/dashboard/products` para gestionar el catálogo.
 
-## Importar el Excel de Microsip
+## Fotografías de productos
 
-El panel acepta el archivo de existencias con el formato proporcionado por Microsip. El importador usa:
+El administrador de productos permite subir hasta 12 imágenes, ordenarlas, elegir la portada y editar el texto alternativo para SEO. Las fotografías se guardan en Vercel Blob para que sean persistentes en producción.
 
-- columna A: nombre del producto;
-- columna H: unidad;
-- columna L: existencia;
-- columna N: último costo;
-- renglones `TIPO: ...`: categoría del producto.
+1. En Vercel abre **Storage** y crea o conecta un almacén **Blob** al proyecto.
+2. Vercel agregará `BLOB_READ_WRITE_TOKEN` a las variables del proyecto.
+3. Para probar subidas desde tu computadora, copia ese valor a tu `.env` local y reinicia `pnpm dev`.
 
-La primera importación crea productos, variantes y categorías. Las siguientes encuentran cada variante por `microsipName`, actualizan existencia y costo, y registran los cambios en el historial.
+Cada imagen puede pesar hasta 4 MB y debe ser JPG, PNG, WEBP o AVIF. Aunque Blob todavía no esté configurado, el editor permite agregar imágenes mediante una URL pública.
 
-> La columna N es **último costo**, no precio de venta. Los precios ya existentes solamente cambian si activas `Actualizar precios existentes`. Para productos nuevos se aplica el margen configurado, 35% por defecto.
+## Importar ExportacionWeb.xlsx
 
-El SKU de los registros importados se genera de manera estable a partir del nombre de Microsip. No edites `microsipName` si quieres que las importaciones posteriores reconozcan el producto.
+El importador nuevo acepta únicamente la exportación web acordada:
+
+- columna A: SKU o código del producto;
+- columna B: nombre;
+- columna I: categoría;
+- columna K: existencia;
+- columna M: precio público.
+
+La primera importación crea categorías, productos y variantes. Las siguientes identifican cada artículo por el SKU estable y actualizan su precio sin duplicarlo. Si una fila no trae SKU, se utiliza el nombre normalizado como respaldo.
+
+El servidor omite automáticamente BETHA, TRT y las categorías BETHA Hormonas, SARMS y Péptidos. Las descripciones, fotografías, SEO, categoría y demás contenido editado desde el administrador no son reemplazados por el Excel.
+
+> El Excel vuelve a actualizar el precio de venta. Si configuraste una oferta manual mediante `Precio anterior`, revísala después de cada importación para confirmar que el descuento siga siendo válido.
 
 ## API principal
 
@@ -69,6 +79,7 @@ Todas las respuestas tienen la forma `{ data, meta? }`; los errores usan `{ erro
 | Acceso | `POST /api/auth/bootstrap`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` |
 | Usuarios | `GET/POST /api/auth/users`, `GET/PATCH/DELETE /api/auth/users/:id` |
 | Productos | `GET/POST /api/products`, `GET/PATCH/DELETE /api/products/:id` |
+| Imágenes | `POST/DELETE /api/uploads/products` |
 | Precios | `GET /api/products/:id/price-history` |
 | Categorías | `GET/POST /api/categories`, `GET/PATCH/DELETE /api/categories/:id` |
 | Marcas | `GET/POST /api/brands`, `GET/PATCH/DELETE /api/brands/:id` |

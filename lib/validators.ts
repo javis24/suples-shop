@@ -19,7 +19,14 @@ export const brandSchema = z.object({
 });
 
 export const imageSchema = z.object({
-  url: z.string().trim().url().max(500),
+  url: z
+    .string()
+    .trim()
+    .url()
+    .max(500)
+    .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), {
+      message: "La imagen debe usar una dirección http o https",
+    }),
   alt: optionalText(255),
   sortOrder: z.coerce.number().int().min(0).optional(),
   primary: z.boolean().optional(),

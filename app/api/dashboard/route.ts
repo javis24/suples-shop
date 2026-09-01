@@ -7,48 +7,47 @@ export const runtime = "nodejs";
 export async function GET() {
   try {
     const user = await requireUser();
-    const [
-      productCount,
-      categoryCount,
-      customerCount,
-      pendingOrders,
-      paidTotals,
-      variants,
-      recentOrders,
-      recentImports,
-    ] = await prisma.$transaction([
-      prisma.product.count({ where: { status: "ACTIVE" } }),
-      prisma.category.count({ where: { active: true } }),
-      prisma.customer.count({ where: { active: true } }),
-      prisma.order.count({ where: { status: { in: ["PENDING", "CONFIRMED", "PREPARING"] } } }),
-      prisma.order.aggregate({
-        where: { paymentStatus: "PAID", status: { not: "CANCELED" } },
-        _sum: { total: true },
-        _count: { id: true },
-      }),
-      prisma.productVariant.findMany({
-        where: { active: true },
-        select: {
-          id: true,
-          sku: true,
-          stock: true,
-          lowStockAt: true,
-          cost: true,
-          price: true,
-          product: { select: { id: true, name: true } },
-        },
-        orderBy: { stock: "asc" },
-      }),
-      prisma.order.findMany({
-        include: { items: true },
-        orderBy: { createdAt: "desc" },
-        take: 6,
-      }),
-      prisma.importBatch.findMany({
-        orderBy: { startedAt: "desc" },
-        take: 5,
-      }),
-    ]);
+    // El hosting usa un pool pequeño. Las lecturas secuenciales son más
+    // estables que abrir una transacción mientras Next atiende otras rutas.
+    const productCount = await prisma.product.count({
+      where: { status: "ACTIVE" },
+    });
+    const categoryCount = await prisma.category.count({
+      where: { active: true },
+    });
+    const customerCount = await prisma.customer.count({
+      where: { active: true },
+    });
+    const pendingOrders = await prisma.order.count({
+      where: { status: { in: ["PENDING", "CONFIRMED", "PREPARING"] } },
+    });
+    const paidTotals = await prisma.order.aggregate({
+      where: { paymentStatus: "PAID", status: { not: "CANCELED" } },
+      _sum: { total: true },
+      _count: { id: true },
+    });
+    const variants = await prisma.productVariant.findMany({
+      where: { active: true },
+      select: {
+        id: true,
+        sku: true,
+        stock: true,
+        lowStockAt: true,
+        cost: true,
+        price: true,
+        product: { select: { id: true, name: true } },
+      },
+      orderBy: { stock: "asc" },
+    });
+    const recentOrders = await prisma.order.findMany({
+      include: { items: true },
+      orderBy: { createdAt: "desc" },
+      take: 6,
+    });
+    const recentImports = await prisma.importBatch.findMany({
+      orderBy: { startedAt: "desc" },
+      take: 5,
+    });
 
     const totalUnits = variants.reduce((sum, variant) => sum + variant.stock, 0);
     const inventoryCost = variants.reduce(

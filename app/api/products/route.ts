@@ -28,13 +28,19 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get("category")?.trim();
     const brand = searchParams.get("brand")?.trim();
     const includeAll = searchParams.get("all") === "true";
+    const status = searchParams.get("status")?.trim();
     const lowStock = searchParams.get("lowStock") === "true";
     const lowStockAt = Math.max(0, Number(searchParams.get("lowStockAt") ?? 5) || 5);
 
     if (includeAll) await requireUser();
 
+    const adminStatus =
+      includeAll && ["DRAFT", "ACTIVE", "INACTIVE", "ARCHIVED"].includes(status ?? "")
+        ? (status as "DRAFT" | "ACTIVE" | "INACTIVE" | "ARCHIVED")
+        : undefined;
+
     const where = {
-      status: includeAll ? undefined : ("ACTIVE" as const),
+      status: includeAll ? adminStatus : ("ACTIVE" as const),
       category: category ? { slug: category } : undefined,
       brand: brand ? { slug: brand } : undefined,
       OR: q
@@ -42,24 +48,27 @@ export async function GET(request: NextRequest) {
             { name: { contains: q } },
             { description: { contains: q } },
             { variants: { some: { sku: { contains: q } } } },
+            { variants: { some: { barcode: { contains: q } } } },
             { variants: { some: { microsipName: { contains: q } } } },
           ]
         : undefined,
       variants: lowStock
         ? { some: { active: true, stock: { lte: lowStockAt } } }
-        : { some: { active: true } },
+        : includeAll
+          ? undefined
+          : { some: { active: true } },
     };
 
-    const [products, total] = await prisma.$transaction([
-      prisma.product.findMany({
-        where,
-        include: productInclude,
-        orderBy: [{ featured: "desc" }, { updatedAt: "desc" }],
-        skip,
-        take: limit,
-      }),
-      prisma.product.count({ where }),
-    ]);
+    // Son consultas de lectura independientes. Ejecutarlas sin transacción
+    // evita competir por una conexión transaccional en pools remotos pequeños.
+    const products = await prisma.product.findMany({
+      where,
+      include: productInclude,
+      orderBy: [{ featured: "desc" }, { updatedAt: "desc" }],
+      skip,
+      take: limit,
+    });
+    const total = await prisma.product.count({ where });
 
     return ok(products, paginationMeta(total, page, limit));
   } catch (error) {
@@ -98,11 +107,16 @@ export async function POST(request: Request) {
         },
         images: data.images
           ? {
-              create: data.images.map((image) => ({
+              create: data.images.map((image, index) => ({
                 ...image,
                 alt: image.alt || null,
-                sortOrder: image.sortOrder ?? 0,
-                primary: image.primary ?? false,
+                sortOrder: index,
+                primary:
+                  index ===
+                  Math.max(
+                    0,
+                    data.images?.findIndex((item) => item.primary) ?? -1,
+                  ),
               })),
             }
           : undefined,

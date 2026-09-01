@@ -252,13 +252,13 @@ export function Storefront() {
 
                 return (
                   <article className="shop-product-card" key={product.id}>
-                    <div className="shop-product-media">
+                    <Link className="shop-product-media" href={`/productos/${product.slug}`}>
                       <span className={hasDiscount ? "shop-product-label sale" : product.featured ? "shop-product-label featured" : "shop-product-label"}>{hasDiscount ? "OFERTA" : product.featured ? "DESTACADO" : index < 10 ? "TOP" : "NUEVO"}</span>
                       {image ? <Image alt={image.alt || product.name} fill sizes="(max-width: 620px) 50vw, (max-width: 980px) 33vw, (max-width: 1260px) 25vw, 20vw" src={image.url} unoptimized /> : <div className="shop-product-placeholder"><span>{initials(product.name)}</span><small>SUPLES SHOP</small></div>}
-                    </div>
+                    </Link>
                     <div className="shop-product-content">
                       <span className="shop-product-category">{product.category.name}</span>
-                      <h2>{product.name}</h2>
+                      <h2><Link href={`/productos/${product.slug}`}>{product.name}</Link></h2>
                       <p className="shop-product-variant">{product.brand?.name || variant?.presentation || variant?.flavor || "Suplemento deportivo"}{extraVariants > 0 ? ` · +${extraVariants} opciones` : ""}</p>
                       <div className="shop-product-price"><strong>{money.format(Number(variant?.price ?? 0))}</strong>{hasDiscount ? <del>{money.format(Number(variant.compareAtPrice))}</del> : null}</div>
                       <div className={stock > 0 ? "shop-stock" : "shop-stock sold-out"}>{stock > 0 ? `EN STOCK: ${stock}` : "PRODUCTO AGOTADO"}</div>
