@@ -40,6 +40,10 @@ type CreatedOrder = {
   id: number;
   orderNumber: string;
   total: string | number;
+  customerName: string;
+  customerEmail: string | null;
+  customerPhone: string | null;
+  notes: string | null;
   paymentMethod: PaymentMethod;
   checkoutUrl: string | null;
   paymentError: string | null;
@@ -81,13 +85,22 @@ function paymentLabel(value: PaymentMethod) {
 }
 
 function addressLine(address: Record<string, unknown>) {
+  const street = String(address.street ?? "").trim();
+  const exteriorNo = String(address.exteriorNo ?? "").trim();
+  const interiorNo = String(address.interiorNo ?? "").trim();
+  const neighborhood = String(address.neighborhood ?? "").trim();
+  const city = String(address.city ?? "").trim();
+  const state = String(address.state ?? "").trim();
+  const postalCode = String(address.postalCode ?? "").trim();
+
   return [
-    address.street,
-    address.exteriorNo,
-    address.neighborhood,
-    address.city,
-    address.state,
-    address.postalCode,
+    [street, exteriorNo ? `#${exteriorNo}` : "", interiorNo ? `Int. ${interiorNo}` : ""]
+      .filter(Boolean)
+      .join(" "),
+    neighborhood ? `Col. ${neighborhood}` : "",
+    city,
+    state,
+    postalCode ? `C.P. ${postalCode}` : "",
   ]
     .filter(Boolean)
     .join(", ");
@@ -211,6 +224,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setSubmitting(true);
     setError("");
     const form = new FormData(event.currentTarget);
+    const whatsappWindow = config.whatsappNumber
+      ? window.open("about:blank", "_blank")
+      : null;
+
+    if (whatsappWindow) {
+      whatsappWindow.document.title = "Preparando pedido para WhatsApp";
+      whatsappWindow.document.body.textContent =
+        "Estamos registrando tu pedido y preparando WhatsApp…";
+    }
 
     try {
       const response = await fetch("/api/orders", {
@@ -244,10 +266,25 @@ export function CartProvider({ children }: { children: ReactNode }) {
         throw new Error(payload.error?.message || "No fue posible crear el pedido");
       }
 
-      setCompletedOrder(payload.data as CreatedOrder);
+      const createdOrder = payload.data as CreatedOrder;
+      setCompletedOrder(createdOrder);
       setItems([]);
       setStep("done");
+
+      const url = whatsappUrl(createdOrder);
+      if (url && whatsappWindow && !whatsappWindow.closed) {
+        whatsappWindow.opener = null;
+        whatsappWindow.location.href = url;
+      } else if (url) {
+        window.location.assign(url);
+      } else {
+        whatsappWindow?.close();
+        setError(
+          "El pedido se registró, pero falta configurar el número de WhatsApp de la tienda.",
+        );
+      }
     } catch (orderError) {
+      whatsappWindow?.close();
       setError(
         orderError instanceof Error
           ? orderError.message
@@ -262,8 +299,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (!config.whatsappNumber) return "";
     const lines = order.items.map(
       (item) =>
-        `• ${item.quantity} × ${item.productName}${item.variantName ? ` (${item.variantName})` : ""} — ${money.format(Number(item.lineTotal))}`,
+        `• ${item.quantity} × ${item.productName}${item.variantName ? ` (${item.variantName})` : ""}\n  ${money.format(Number(item.unitPrice))} c/u — ${money.format(Number(item.lineTotal))}`,
     );
+    const references = String(order.shippingAddress.references ?? "").trim();
     const transfer =
       order.paymentMethod === "TRANSFER" && config.bank.clabe
         ? [
@@ -273,16 +311,31 @@ export function CartProvider({ children }: { children: ReactNode }) {
             `CLABE: ${config.bank.clabe}`,
           ]
         : [];
+    const onlinePayment =
+      order.paymentMethod === "ONLINE" && order.checkoutUrl
+        ? ["", `Liga para pagar: ${order.checkoutUrl}`]
+        : [];
     const message = [
-      "Hola Suples Shop, quiero confirmar mi pedido:",
-      `*${order.orderNumber}*`,
+      "Hola Suples Shop, quiero realizar el siguiente pedido:",
+      `*Pedido ${order.orderNumber}*`,
       "",
+      "*DATOS DEL CLIENTE*",
+      `Nombre: ${order.customerName}`,
+      `WhatsApp: ${order.customerPhone || "No proporcionado"}`,
+      ...(order.customerEmail ? [`Correo: ${order.customerEmail}`] : []),
+      "",
+      "*PRODUCTOS*",
       ...lines,
       "",
-      `Total: *${money.format(Number(order.total))}*`,
-      `Pago: ${paymentLabel(order.paymentMethod)}`,
-      `Entrega: ${addressLine(order.shippingAddress)}`,
+      `*TOTAL: ${money.format(Number(order.total))}*`,
+      `*FORMA DE PAGO: ${paymentLabel(order.paymentMethod)}*`,
+      "",
+      "*DATOS DE ENTREGA*",
+      addressLine(order.shippingAddress),
+      ...(references ? [`Referencias: ${references}`] : []),
+      ...(order.notes ? ["", `Notas: ${order.notes}`] : []),
       ...transfer,
+      ...onlinePayment,
     ].join("\n");
     return `https://wa.me/${config.whatsappNumber}?text=${encodeURIComponent(message)}`;
   }
@@ -531,8 +584,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
                   <span>Total de productos</span>
                   <strong>{money.format(subtotal)}</strong>
                 </div>
-                <button className="cart-primary" disabled={submitting} type="submit">
-                  {submitting ? "Registrando pedido…" : "Registrar pedido"}
+                {!config.whatsappNumber ? (
+                  <p className="checkout-error">
+                    Falta configurar STORE_WHATSAPP_NUMBER para enviar el pedido.
+                  </p>
+                ) : null}
+                <button
+                  className="cart-primary"
+                  disabled={submitting || !config.whatsappNumber}
+                  type="submit"
+                >
+                  {submitting
+                    ? "Registrando pedido…"
+                    : config.whatsappNumber
+                      ? "Registrar y enviar por WhatsApp"
+                      : "WhatsApp no configurado"}
                 </button>
                 <button
                   className="cart-secondary"
