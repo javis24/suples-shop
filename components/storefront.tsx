@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useCart } from "@/components/cart-provider";
 
 type Category = {
   id: number;
@@ -13,6 +14,8 @@ type Category = {
 
 type Variant = {
   id: number;
+  sku: string;
+  unit: string;
   price: string | number;
   compareAtPrice: string | number | null;
   stock: number;
@@ -57,6 +60,7 @@ function productPrice(product: Product) {
 }
 
 export function Storefront() {
+  const { addItem, itemCount, openCart } = useCart();
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [totalProducts, setTotalProducts] = useState(0);
@@ -65,7 +69,6 @@ export function Storefront() {
   const [appliedSearch, setAppliedSearch] = useState("");
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
   const [sort, setSort] = useState<SortOption>("featured");
-  const [cartCount, setCartCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 
@@ -190,7 +193,7 @@ export function Storefront() {
 
           <nav className="shop-header-actions" aria-label="Acciones de la tienda">
             <Link href="/dashboard"><span className="shop-action-icon">♙</span><span><small>Mi cuenta</small><strong>Administrar</strong></span></Link>
-            <button type="button" aria-label={`${cartCount} productos en el carrito`}><span className="shop-action-icon">▱</span><span><small>Mi carrito</small><strong>{cartCount} productos</strong></span></button>
+            <button onClick={openCart} type="button" aria-label={`${itemCount} productos en el carrito`}><span className="shop-action-icon">▱</span><span><small>Mi carrito</small><strong>{itemCount} productos</strong></span></button>
           </nav>
         </div>
       </header>
@@ -254,7 +257,9 @@ export function Storefront() {
           {!loading && visibleProducts.length ? (
             <div className="shop-products-grid">
               {visibleProducts.map((product, index) => {
-                const variant = product.variants[0];
+                const variant =
+                  product.variants.find((item) => item.stock > 0) ??
+                  product.variants[0];
                 const stock = productStock(product);
                 const image = product.images[0];
                 const hasDiscount = Number(variant?.compareAtPrice ?? 0) > Number(variant?.price ?? 0);
@@ -276,7 +281,31 @@ export function Storefront() {
                       </div>
                       <ul><li>Producto original</li><li>Existencia actualizada</li>{product.variants.length > 1 ? <li>Opciones de sabor o presentación</li> : null}</ul>
                     </div>
-                    <button className="shop-add-cart" disabled={stock < 1} onClick={() => setCartCount((count) => count + 1)} type="button">{stock > 0 ? "Agregar al carrito" : "Sin existencia"}</button>
+                    <button
+                      className="shop-add-cart"
+                      disabled={!variant || stock < 1}
+                      onClick={() => {
+                        if (!variant) return;
+                        addItem({
+                          productId: product.id,
+                          variantId: variant.id,
+                          slug: product.slug,
+                          productName: product.name,
+                          sku: variant.sku,
+                          variantName:
+                            [variant.presentation, variant.flavor]
+                              .filter(Boolean)
+                              .join(" · ") || null,
+                          unit: variant.unit,
+                          price: Number(variant.price),
+                          stock: variant.stock,
+                          imageUrl: image?.url ?? null,
+                        });
+                      }}
+                      type="button"
+                    >
+                      {stock > 0 ? "Agregar al carrito" : "Sin existencia"}
+                    </button>
                   </article>
                 );
               })}

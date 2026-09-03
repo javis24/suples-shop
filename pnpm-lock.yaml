@@ -20,6 +20,9 @@ importers:
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
+      mercadopago:
+        specifier: ^3.6.0
+        version: 3.6.0
       next:
         specifier: 16.3.1
         version: 16.3.1(@babel/core@7.29.7(supports-color@7.2.0))(@types/node@20.19.43)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2039,6 +2042,10 @@ packages:
   math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
     engines: {node: '>= 0.4'}
+
+  mercadopago@3.6.0:
+    resolution: {integrity: sha512-Dk47c/bgRPdbMPcRvopitgZq4jOujMfeMf/msWNr942QQ4p+CDBhhov+059UWhsoyGjdizzJaZeyveApoEgDBg==}
+    engines: {node: '>=18'}
 
   merge-stream@2.0.0:
     resolution: {integrity: sha512-abv/qOcuPfk3URPfDzmZU1LKmuw8kT+0nIHvKrKgFrwifol/doWcdA4ZqsWQ8ENrFKkd67Mfpo/LovbIUsbt3w==}
@@ -4767,6 +4774,8 @@ snapshots:
       lru-cache: 10.4.3
 
   math-intrinsics@1.1.0: {}
+
+  mercadopago@3.6.0: {}
 
   merge-stream@2.0.0: {}
 

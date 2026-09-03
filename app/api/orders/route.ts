@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { orderNumber } from "@/lib/slug";
 import { orderSchema } from "@/lib/validators";
+import { createMercadoPagoPreference } from "@/lib/mercado-pago";
 import { Prisma } from "@/app/generated/prisma/client";
 
 export const runtime = "nodejs";
@@ -35,16 +36,14 @@ export async function GET(request: NextRequest) {
         : undefined,
     };
 
-    const [orders, total] = await prisma.$transaction([
-      prisma.order.findMany({
-        where,
-        include: { items: true, customer: true, coupon: true },
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: limit,
-      }),
-      prisma.order.count({ where }),
-    ]);
+    const orders = await prisma.order.findMany({
+      where,
+      include: { items: true, customer: true, coupon: true },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
+    });
+    const total = await prisma.order.count({ where });
     return ok(orders, paginationMeta(total, page, limit));
   } catch (error) {
     return handleApiError(error);
@@ -139,6 +138,8 @@ export async function POST(request: Request) {
             orderNumber: orderNumber(),
             customerId,
             couponId: coupon?.id ?? null,
+            paymentMethod: data.paymentMethod,
+            paymentProvider: data.paymentMethod === "ONLINE" ? "MERCADO_PAGO" : null,
             subtotal,
             discount,
             shipping,
@@ -198,10 +199,31 @@ export async function POST(request: Request) {
           include: { items: true, customer: true, coupon: true, statusHistory: true },
         });
       },
-      { maxWait: 5_000, timeout: 30_000 },
+      { maxWait: 20_000, timeout: 30_000 },
     );
 
-    return created(order);
+    let checkoutUrl: string | null = null;
+    let paymentError: string | null = null;
+
+    if (data.paymentMethod === "ONLINE") {
+      try {
+        const payment = await createMercadoPagoPreference(
+          order,
+          new URL(request.url).origin,
+        );
+        checkoutUrl = payment.checkoutUrl;
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { paymentPreferenceId: payment.preferenceId },
+        });
+      } catch (error) {
+        console.error("No fue posible crear la preferencia de Mercado Pago", error);
+        paymentError =
+          "El pedido se guardó, pero no fue posible abrir el pago en línea. Puedes enviarlo por WhatsApp para recibir ayuda.";
+      }
+    }
+
+    return created({ ...order, checkoutUrl, paymentError });
   } catch (error) {
     return handleApiError(error);
   }

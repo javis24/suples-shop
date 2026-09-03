@@ -5,6 +5,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useCart } from "@/components/cart-provider";
 
 type ProductDetail = {
   id: number;
@@ -39,9 +40,9 @@ const money = new Intl.NumberFormat("es-MX", {
 });
 
 export function ProductDetailClient({ product }: { product: ProductDetail }) {
+  const { addItem, itemCount, openCart } = useCart();
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState(0);
-  const [added, setAdded] = useState(false);
   const variant = product.variants[selectedVariant] || product.variants[0];
   const image = product.images[selectedImage] || product.images[0];
   const hasOffer =
@@ -79,7 +80,12 @@ export function ProductDetailClient({ product }: { product: ProductDetail }) {
               priority
             />
           </Link>
-          <Link className="product-back-link" href="/">← Volver al catálogo</Link>
+          <div className="product-detail-header-actions">
+            <Link className="product-back-link" href="/">← Volver al catálogo</Link>
+            <button className="product-cart-link" onClick={openCart} type="button">
+              Carrito ({itemCount})
+            </button>
+          </div>
         </div>
       </header>
 
@@ -110,7 +116,28 @@ export function ProductDetailClient({ product }: { product: ProductDetail }) {
 
           {product.variants.length > 1 ? <div className="product-detail-variants"><strong>Elige una presentación</strong><div>{product.variants.map((item, index) => <button className={selectedVariant === index ? "active" : ""} disabled={item.stock < 1} key={item.id} onClick={() => setSelectedVariant(index)} type="button">{variantLabel(item)}</button>)}</div></div> : null}
 
-          <button className="product-detail-add" disabled={!variant || variant.stock < 1} onClick={() => { setAdded(true); window.setTimeout(() => setAdded(false), 2200); }} type="button">{added ? "✓ Producto agregado" : variant?.stock > 0 ? "Agregar al carrito" : "Sin existencia"}</button>
+          <button
+            className="product-detail-add"
+            disabled={!variant || variant.stock < 1}
+            onClick={() => {
+              if (!variant) return;
+              addItem({
+                productId: product.id,
+                variantId: variant.id,
+                slug: product.slug,
+                productName: product.name,
+                sku: variant.sku,
+                variantName: variantLabel(variant),
+                unit: variant.unit,
+                price: Number(variant.price),
+                stock: variant.stock,
+                imageUrl: image?.url ?? null,
+              });
+            }}
+            type="button"
+          >
+            {variant?.stock > 0 ? "Agregar al carrito" : "Sin existencia"}
+          </button>
 
           <ul className="product-detail-benefits"><li><strong>Producto original</strong><span>Catálogo administrado por Suples Shop</span></li><li><strong>Precio actualizado</strong><span>Sincronizado mediante el Excel de la tienda</span></li><li><strong>Atención personalizada</strong><span>Te ayudamos a elegir la opción adecuada</span></li></ul>
         </article>

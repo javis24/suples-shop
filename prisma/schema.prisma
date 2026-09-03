@@ -58,6 +58,12 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  ONLINE
+}
+
 enum CouponType {
   PERCENTAGE
   FIXED
@@ -304,31 +310,36 @@ model Address {
 }
 
 model Order {
-  id                 Int                  @id @default(autoincrement())
-  orderNumber        String               @unique @db.VarChar(40)
-  customerId         Int?
-  couponId           Int?
-  status             OrderStatus          @default(PENDING)
-  paymentStatus      PaymentStatus        @default(PENDING)
-  subtotal           Decimal              @db.Decimal(12, 2)
-  discount           Decimal              @default(0) @db.Decimal(12, 2)
-  shipping           Decimal              @default(0) @db.Decimal(12, 2)
-  total              Decimal              @db.Decimal(12, 2)
-  customerName       String               @db.VarChar(220)
-  customerEmail      String?              @db.VarChar(190)
-  customerPhone      String?              @db.VarChar(30)
-  shippingAddress    Json
-  notes              String?              @db.Text
-  customer           Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  coupon             Coupon?              @relation(fields: [couponId], references: [id], onDelete: SetNull)
-  items              OrderItem[]
-  statusHistory      OrderStatusHistory[]
-  inventoryMovements InventoryMovement[]
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  id                  Int                  @id @default(autoincrement())
+  orderNumber         String               @unique @db.VarChar(40)
+  customerId          Int?
+  couponId            Int?
+  status              OrderStatus          @default(PENDING)
+  paymentStatus       PaymentStatus        @default(PENDING)
+  paymentMethod       PaymentMethod        @default(CASH)
+  paymentProvider     String?              @db.VarChar(40)
+  paymentPreferenceId String?              @db.VarChar(120)
+  paymentReference    String?              @unique @db.VarChar(120)
+  subtotal            Decimal              @db.Decimal(12, 2)
+  discount            Decimal              @default(0) @db.Decimal(12, 2)
+  shipping            Decimal              @default(0) @db.Decimal(12, 2)
+  total               Decimal              @db.Decimal(12, 2)
+  customerName        String               @db.VarChar(220)
+  customerEmail       String?              @db.VarChar(190)
+  customerPhone       String?              @db.VarChar(30)
+  shippingAddress     Json
+  notes               String?              @db.Text
+  customer            Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  coupon              Coupon?              @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  items               OrderItem[]
+  statusHistory       OrderStatusHistory[]
+  inventoryMovements  InventoryMovement[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@index([status, createdAt])
   @@index([paymentStatus, createdAt])
+  @@index([paymentMethod, createdAt])
   @@index([customerId])
   @@index([couponId])
 }

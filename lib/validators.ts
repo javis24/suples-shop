@@ -108,6 +108,7 @@ export const orderSchema = z.object({
   customerName: z.string().trim().min(3).max(220),
   customerEmail: z.string().trim().email().max(190).optional().nullable(),
   customerPhone: optionalText(30),
+  paymentMethod: z.enum(["CASH", "TRANSFER", "ONLINE"]).default("CASH"),
   couponCode: optionalText(60),
   shipping: z.coerce.number().min(0).optional(),
   shippingAddress: z.record(z.string(), z.unknown()),
