@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         ? (status as "DRAFT" | "ACTIVE" | "INACTIVE" | "ARCHIVED")
         : undefined;
 
-        const variantMatches = q
+ const variantMatches = q
   ? await prisma.productVariant.findMany({
       where: {
         active: includeAll ? undefined : true,
@@ -48,16 +48,15 @@ export async function GET(request: NextRequest) {
           { barcode: { contains: q } },
           { microsipName: { contains: q } },
         ],
-          },
-          select: { productId: true },
-          distinct: ["productId"],
-        })
-      : [];
+      },
+      select: { productId: true },
+      distinct: ["productId"],
+    })
+  : [];
 
-    const variantProductIds = variantMatches.map(
-      (variant) => variant.productId,
-    );
-
+const variantProductIds = variantMatches.map(
+  (variant) => variant.productId,
+);
     const where = {
       status: includeAll ? adminStatus : ("ACTIVE" as const),
       category: category ? { slug: category } : undefined,
@@ -66,9 +65,6 @@ export async function GET(request: NextRequest) {
   ? [
       { name: { contains: q } },
       { description: { contains: q } },
-      ...(variantProductIds.length > 0
-        ? [{ id: { in: variantProductIds } }]
-        : []),
     ]
   : undefined,
       variants: lowStock
