@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const { page, limit, skip } = getPagination(searchParams);
-    const q = searchParams.get("q")?.trim();
+    const q = searchParams.get("q")?.trim().slice(0, 100);
     const category = searchParams.get("category")?.trim();
     const brand = searchParams.get("brand")?.trim();
     const includeAll = searchParams.get("all") === "true";
@@ -39,19 +39,38 @@ export async function GET(request: NextRequest) {
         ? (status as "DRAFT" | "ACTIVE" | "INACTIVE" | "ARCHIVED")
         : undefined;
 
+        const variantMatches = q
+  ? await prisma.productVariant.findMany({
+      where: {
+        active: includeAll ? undefined : true,
+        OR: [
+          { sku: { contains: q } },
+          { barcode: { contains: q } },
+          { microsipName: { contains: q } },
+        ],
+          },
+          select: { productId: true },
+          distinct: ["productId"],
+        })
+      : [];
+
+    const variantProductIds = variantMatches.map(
+      (variant) => variant.productId,
+    );
+
     const where = {
       status: includeAll ? adminStatus : ("ACTIVE" as const),
       category: category ? { slug: category } : undefined,
       brand: brand ? { slug: brand } : undefined,
       OR: q
-        ? [
-            { name: { contains: q } },
-            { description: { contains: q } },
-            { variants: { some: { sku: { contains: q } } } },
-            { variants: { some: { barcode: { contains: q } } } },
-            { variants: { some: { microsipName: { contains: q } } } },
-          ]
-        : undefined,
+  ? [
+      { name: { contains: q } },
+      { description: { contains: q } },
+      ...(variantProductIds.length > 0
+        ? [{ id: { in: variantProductIds } }]
+        : []),
+    ]
+  : undefined,
       variants: lowStock
         ? { some: { active: true, stock: { lte: lowStockAt } } }
         : includeAll

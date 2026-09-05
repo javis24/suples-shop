@@ -104,6 +104,22 @@ export function handleApiError(error: unknown) {
     );
   }
 
+  if (code === "P2028" || code === "P2039") {
+  console.error("Database connection error", error);
+
+  return json(
+    {
+      success: false,
+      error: {
+        code: "DATABASE_UNAVAILABLE",
+        message:
+          "La base de datos está ocupada. Intenta nuevamente en unos segundos.",
+      },
+    },
+    { status: 503 },
+  );
+}
+
   console.error("API error", error);
   return json(
     {

@@ -14,14 +14,18 @@ const ALLOWED_TYPES = new Set([
 ]);
 
 function assertBlobConfigured() {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+  const hasReadWriteToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+  const hasOidcCredentials = Boolean(
+    process.env.BLOB_STORE_ID && process.env.VERCEL_OIDC_TOKEN,
+  );
+
+  if (!hasReadWriteToken && !hasOidcCredentials) {
     throw new ApiError(
       503,
-      "Falta conectar Vercel Blob y configurar BLOB_READ_WRITE_TOKEN",
+      "Falta conectar un almacén Vercel Blob a este proyecto y ambiente",
     );
   }
 }
-
 function safeName(name: string) {
   const extension = name.split(".").pop()?.toLowerCase() || "webp";
   const base = name
