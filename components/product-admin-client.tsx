@@ -76,7 +76,7 @@ type ProductDraft = {
   slug: string;
   description: string;
   categoryId: string;
-  brandId: string;
+  brandName: string;
   status: ProductStatus;
   featured: boolean;
   seoTitle: string;
@@ -151,7 +151,7 @@ function productDraft(product: Product): ProductDraft {
     slug: product.slug,
     description: product.description || "",
     categoryId: String(product.categoryId),
-    brandId: product.brandId ? String(product.brandId) : "",
+    brandName: product.brand?.name || "",
     status: product.status,
     featured: product.featured,
     seoTitle: product.seoTitle || "",
@@ -183,7 +183,7 @@ function newProductDraft(categoryId = ""): ProductDraft {
     slug: "",
     description: "",
     categoryId,
-    brandId: "",
+    brandName: "",
     status: "ACTIVE",
     featured: false,
     seoTitle: "",
@@ -464,6 +464,44 @@ export function ProductAdminClient() {
     }
   }
 
+  async function resolveBrandId(name: string) {
+  const brandName = name.trim();
+
+  if (!brandName) {
+    return null;
+  }
+
+  const existingBrand = brands.find(
+    (brand) =>
+      brand.name.localeCompare(brandName, "es-MX", {
+        sensitivity: "base",
+      }) === 0,
+  );
+
+  if (existingBrand) {
+    return existingBrand.id;
+  }
+
+  const result = await request<Brand>("/api/brands", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: brandName,
+      active: true,
+    }),
+  });
+
+  setBrands((current) =>
+    [...current, result.data].sort((first, second) =>
+      first.name.localeCompare(second.name, "es-MX"),
+    ),
+  );
+
+  return result.data.id;
+}
+
   async function saveProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editor) return;
@@ -496,41 +534,60 @@ export function ProductAdminClient() {
       primary: editor.images.some((item) => item.primary) ? image.primary : index === 0,
     }));
 
-    const body = {
-      name: editor.name.trim(),
-      slug: editor.slug.trim() || null,
-      description: editor.description.trim() || null,
-      categoryId: Number(editor.categoryId),
-      brandId: editor.brandId ? Number(editor.brandId) : null,
-      status: editor.status,
-      featured: editor.featured,
-      seoTitle: editor.seoTitle.trim() || null,
-      seoDescription: editor.seoDescription.trim() || null,
-      variants: [
-        {
-          id: editor.variant.id,
-          sku: editor.variant.sku.trim(),
-          barcode: editor.variant.barcode.trim() || null,
-          unit: editor.variant.unit.trim() || "Pieza",
-          cost: numberValue(editor.variant.cost),
-          price,
-          compareAtPrice,
-          stock: Math.max(0, Math.trunc(numberValue(editor.variant.stock))),
-          lowStockAt: Math.max(0, Math.trunc(numberValue(editor.variant.lowStockAt))),
-          active: editor.variant.active,
-        },
-      ],
-      images,
-    };
+   setSaving(true);
+setNotice({
+  type: "info",
+  message: "Guardando producto…",
+});
 
-    setSaving(true);
-    setNotice({ type: "info", message: "Guardando producto…" });
-    try {
-      await request<Product>(editor.id ? `/api/products/${editor.id}` : "/api/products", {
-        method: editor.id ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+try {
+  const brandId = await resolveBrandId(editor.brandName);
+
+  const body = {
+    name: editor.name.trim(),
+    slug: editor.slug.trim() || null,
+    description: editor.description.trim() || null,
+    categoryId: Number(editor.categoryId),
+    brandId,
+    status: editor.status,
+    featured: editor.featured,
+    seoTitle: editor.seoTitle.trim() || null,
+    seoDescription: editor.seoDescription.trim() || null,
+    variants: [
+      {
+        id: editor.variant.id,
+        sku: editor.variant.sku.trim(),
+        barcode: editor.variant.barcode.trim() || null,
+        unit: editor.variant.unit.trim() || "Pieza",
+        cost: numberValue(editor.variant.cost),
+        price,
+        compareAtPrice,
+        stock: Math.max(
+          0,
+          Math.trunc(numberValue(editor.variant.stock)),
+        ),
+        lowStockAt: Math.max(
+          0,
+          Math.trunc(numberValue(editor.variant.lowStockAt)),
+        ),
+        active: editor.variant.active,
+      },
+    ],
+    images,
+  };
+
+  await request<Product>(
+    editor.id
+      ? `/api/products/${editor.id}`
+      : "/api/products",
+    {
+      method: editor.id ? "PATCH" : "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    },
+  );
 
       await Promise.allSettled(removedBlobUrls.map(deleteBlob));
       setEditor(null);
@@ -709,11 +766,26 @@ export function ProductAdminClient() {
                     <div className="product-form-grid">
                       <label className="wide"><span>Nombre del producto *</span><input maxLength={255} onChange={(event) => updateDraft("name", event.target.value)} required value={editor.name} /></label>
                       <label><span>Categoría *</span><select onChange={(event) => updateDraft("categoryId", event.target.value)} required value={editor.categoryId}>{categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-                      <label><span>Marca</span><select onChange={(event) => updateDraft("brandId", event.target.value)} value={editor.brandId}><option value="">Sin marca</option>{brands.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+                      <label><span>Marca</span><input
+                        list="product-brand-options"
+                        maxLength={120}
+                        onChange={(event) =>
+                          updateDraft("brandName", event.target.value)
+                        }
+                        placeholder="Ej. Hi-Tech Pharmaceuticals"
+                        value={editor.brandName}
+                      /><datalist id="product-brand-options">
+                        {brands.map((item) => (
+                          <option key={item.id} value={item.name} />
+                        ))}
+                      </datalist>
+                      <small>
+                        Selecciona una marca existente o escribe una nueva.
+                      </small>
+                    </label>
                       <label className="wide"><span>Descripción</span><textarea maxLength={20000} onChange={(event) => updateDraft("description", event.target.value)} placeholder="Beneficios, ingredientes, modo de uso y recomendaciones…" rows={7} value={editor.description} /><small>{editor.description.length.toLocaleString("es-MX")} / 20,000</small></label>
                     </div>
                   </section>
-
                   <section className="product-form-section">
                     <div className="product-form-heading"><span>2</span><div><h3>Precio, oferta e inventario</h3><p>El precio del Excel puede actualizar nuevamente el precio de venta.</p></div></div>
                     <div className="product-form-grid commercial-grid">
