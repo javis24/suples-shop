@@ -36,14 +36,124 @@ type ParsedRows = {
   skippedRows: SkippedExcelRow[];
 };
 
+type ProductIdentity = {
+  productKey: string;
+  productName: string;
+  flavor: string | null;
+};
+
+type WebExportBaseRow = {
+  sourceRow: number;
+  key: string;
+  sku: string | null;
+  name: string;
+  category: string;
+  unit: string;
+  price: number;
+  stock: number;
+};
+
 const EXCLUDED_BRANDS = ["BETHA", "TRT"] as const;
+
 const EXCLUDED_CATEGORY_WORDS = new Set([
   "BETHA",
   "TRT",
   "HORMONAS",
   "SARMS",
   "PEPTIDOS",
+  "ANABOLICOS",
+  "FARMACIA",
 ]);
+
+const EXCLUDED_NAME_WORDS = new Set([
+  "HORMONA",
+  "HORMONAS",
+  "SARM",
+  "SARMS",
+  "PEPTIDO",
+  "PEPTIDOS",
+]);
+
+const EXCLUDED_NAME_PHRASES = [
+  "OSTARINE",
+  "MK2866",
+  "ANAVAR",
+  "OXANDROLONA",
+  "WINSTROL",
+  "TEST PROPIONATO",
+  "PREGNYL",
+  "GONADOTROPINA",
+] as const;
+
+const VARIANT_CATEGORIES = new Set([
+  "ADEREZOS",
+  "BCAA AMINOACIDOS",
+  "CARBOHIDRATOS",
+  "CARNITINAS",
+  "COLAGENO",
+  "CREATINAS",
+  "GANADORES DE MASA",
+  "GLUTAMINAS",
+  "GREENS",
+  "PRE ENTRENO",
+  "PROTEINAS",
+  "SHAKERS",
+  "SNAKS Y BEBIDAS",
+  "SNACKS Y BEBIDAS",
+]);
+
+const PRESENTATION_PATTERN =
+  /\b(?:\d+(?:[.,]\d+)?\s*)?(?:SERV(?:S)?|LBS?|OZ|GRS?|KG|ML|LT|PACK|SCOOPS?|PORCIONES?|CAPS?|TABS?|TABLETAS?|CT|PIEZAS?)\b/gi;
+
+const FLAVOR_SUFFIXES = [
+  "STRAWBERRY KIWI SMASH",
+  "CHOCOLATE PEANUT BUTTER",
+  "COOKIES AND CREAM",
+  "STRAWBERRY LEMONADE",
+  "BLUE RASPBERRY",
+  "COTTON CANDY",
+  "FRUIT PUNCH",
+  "GREEN APPLE",
+  "ORANGE MANGO",
+  "PEANUT BUTTER",
+  "PINEAPPLE MANGO",
+  "SOUR GUMMY",
+  "TROPICAL PUNCH",
+  "WATERMELON LIME",
+  "JACKED GRAPE",
+  "MANIAC MANGO",
+  "BIRTHDAY CAKE",
+  "CINNAMON ROLL",
+  "DOUBLE CHOCOLATE",
+  "FRESA KIWI",
+  "FRUTOS ROJOS",
+  "LEMON LIME",
+  "MANGO PINEAPPLE",
+  "STRAWBERRY KIWI",
+  "VANILLA ICE CREAM",
+  "WHITE CHOCOLATE",
+  "BLACK CHERRY",
+  "BLUE RAZZ",
+  "CHERRY LIMEADE",
+  "CHOCOLATE",
+  "CHOCOLATE MILK",
+  "COCONUT",
+  "COLA",
+  "FRESA",
+  "FRUIT LOOPS",
+  "GRAPE",
+  "LEMONADE",
+  "MANGO",
+  "MANGONADA",
+  "NARANJA",
+  "PINA COLADA",
+  "PINEAPPLE",
+  "STRAWBERRY",
+  "TROPICAL",
+  "VAINILLA",
+  "VANILLA",
+  "WATERMELON",
+] as const;
 
 function cellText(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -103,68 +213,6 @@ export function normalizeProductKey(value: string): string {
     .slice(0, 255);
 }
 
-type ProductIdentity = {
-  productKey: string;
-  productName: string;
-  flavor: string | null;
-};
-
-/*
- * Solamente se separan sufijos conocidos. Esto evita agrupar por accidente
- * productos diferentes que únicamente comparten las primeras palabras.
- * Agrega aquí nuevos sabores tal como aparecen al final del nombre de
- * Microsip. Los sabores largos se prueban antes que los cortos.
- */
-const FLAVOR_SUFFIXES = [
-  "STRAWBERRY KIWI SMASH",
-  "CHOCOLATE PEANUT BUTTER",
-  "COOKIES AND CREAM",
-  "STRAWBERRY LEMONADE",
-  "BLUE RASPBERRY",
-  "COTTON CANDY",
-  "FRUIT PUNCH",
-  "GREEN APPLE",
-  "ORANGE MANGO",
-  "PEANUT BUTTER",
-  "PINEAPPLE MANGO",
-  "SOUR GUMMY",
-  "TROPICAL PUNCH",
-  "WATERMELON LIME",
-  "JACKED GRAPE",
-  "MANIAC MANGO",
-  "BIRTHDAY CAKE",
-  "CINNAMON ROLL",
-  "DOUBLE CHOCOLATE",
-  "FRESA KIWI",
-  "FRUTOS ROJOS",
-  "LEMON LIME",
-  "MANGO PINEAPPLE",
-  "STRAWBERRY KIWI",
-  "VANILLA ICE CREAM",
-  "WHITE CHOCOLATE",
-  "BLACK CHERRY",
-  "BLUE RAZZ",
-  "CHERRY LIMEADE",
-  "CHOCOLATE",
-  "CHOCOLATE MILK",
-  "COCONUT",
-  "COLA",
-  "FRESA",
-  "FRUIT LOOPS",
-  "GRAPE",
-  "LEMONADE",
-  "MANGO",
-  "MANGONADA",
-  "NARANJA",
-  "PINA COLADA",
-  "PINEAPPLE",
-  "STRAWBERRY",
-  "TROPICAL",
-  "VAINILLA",
-  "VANILLA",
-  "WATERMELON",
-] as const;
-
 const NORMALIZED_FLAVOR_SUFFIXES = FLAVOR_SUFFIXES.map((flavor) => ({
   flavor,
   key: normalizeProductKey(flavor),
@@ -183,8 +231,6 @@ export function resolveProductIdentity(name: string): ProductIdentity {
       .replace(/\s+NEW$/i, "")
       .trim();
 
-    // Evita convertir nombres demasiado generales, por ejemplo
-    // "MANGO" o "BCAA MANGO", en agrupaciones inseguras.
     if (productName.split(" ").length < 2) continue;
 
     return {
@@ -199,6 +245,49 @@ export function resolveProductIdentity(name: string): ProductIdentity {
     productName: name,
     flavor: null,
   };
+}
+
+function deriveVariantCandidate(
+  name: string,
+  category: string,
+): ProductIdentity | null {
+  const categoryKey = normalizeProductKey(category);
+
+  if (!VARIANT_CATEGORIES.has(categoryKey)) {
+    return null;
+  }
+
+  const matches = Array.from(name.matchAll(PRESENTATION_PATTERN));
+  const lastMatch = matches.at(-1);
+
+  if (lastMatch?.index !== undefined) {
+    const end = lastMatch.index + lastMatch[0].length;
+    const productName = cleanProductName(
+      name.slice(0, end).replace(/[()[\]]/g, " "),
+    );
+    const flavor = cleanProductName(
+      name
+        .slice(end)
+        .replace(/^[\s)\]\-–—:]+/, "")
+        .replace(/^NEW\s+/i, "")
+        .replace(/\*+$/g, ""),
+    );
+
+    if (productName.split(" ").length >= 2 && flavor) {
+      return {
+        productKey: normalizeProductKey(productName),
+        productName,
+        flavor,
+      };
+    }
+  }
+
+  const knownFlavorIdentity = resolveProductIdentity(name);
+  return knownFlavorIdentity.flavor ? knownFlavorIdentity : null;
+}
+
+function familyCountKey(identity: ProductIdentity, category: string): string {
+  return `${normalizeProductKey(category)}::${identity.productKey}`;
 }
 
 export function buildProductSourceKey(
@@ -225,10 +314,7 @@ function exclusionReason(name: string, category: string): string | null {
   const normalizedName = normalizeProductKey(name);
 
   for (const brand of EXCLUDED_BRANDS) {
-    if (
-      normalizedName === brand ||
-      normalizedName.startsWith(`${brand} `)
-    ) {
+    if (normalizedName === brand || normalizedName.startsWith(`${brand} `)) {
       return `Producto excluido por la marca ${brand}`;
     }
   }
@@ -239,6 +325,22 @@ function exclusionReason(name: string, category: string): string | null {
 
   if (excludedCategoryWord) {
     return `Producto excluido por la categoría ${category}`;
+  }
+
+  const excludedNameWord = normalizedWords(name).find((word) =>
+    EXCLUDED_NAME_WORDS.has(word),
+  );
+
+  if (excludedNameWord) {
+    return `Producto excluido por el término ${excludedNameWord}`;
+  }
+
+  const excludedPhrase = EXCLUDED_NAME_PHRASES.find((phrase) =>
+    normalizedName.includes(phrase),
+  );
+
+  if (excludedPhrase) {
+    return `Producto excluido por el término ${excludedPhrase}`;
   }
 
   return null;
@@ -273,7 +375,7 @@ function isWebExport(sourceRows: unknown[][]): boolean {
 }
 
 function parseWebExport(sourceRows: unknown[][]): ParsedRows {
-  const candidates: MicrosipPriceRow[] = [];
+  const baseRows: WebExportBaseRow[] = [];
   const skippedRows: SkippedExcelRow[] = [];
   let sourceProductRows = 0;
 
@@ -285,8 +387,6 @@ function parseWebExport(sourceRows: unknown[][]): ParsedRows {
     const stock = stockNumber(row[10]);
     const price = money(row[12]);
 
-    // ExportacionWeb.xlsx no contiene encabezados. Una fila con nombre se
-    // considera producto, aunque después sea omitida por datos inválidos.
     if (!name) continue;
 
     sourceProductRows += 1;
@@ -345,14 +445,9 @@ function parseWebExport(sourceRows: unknown[][]): ParsedRows {
       continue;
     }
 
-    const identity = resolveProductIdentity(name);
-
-    candidates.push({
+    baseRows.push({
       sourceRow: index + 1,
       key: buildProductSourceKey(sku, name),
-      productKey: identity.productKey,
-      productName: identity.productName,
-      flavor: identity.flavor,
       sku,
       name,
       category,
@@ -361,6 +456,38 @@ function parseWebExport(sourceRows: unknown[][]): ParsedRows {
       stock,
     });
   }
+
+  const identityBySourceRow = new Map<number, ProductIdentity | null>();
+  const distinctNamesByFamily = new Map<string, Set<string>>();
+
+  for (const row of baseRows) {
+    const identity = deriveVariantCandidate(row.name, row.category);
+    identityBySourceRow.set(row.sourceRow, identity);
+
+    if (!identity) continue;
+
+    const counterKey = familyCountKey(identity, row.category);
+    const names = distinctNamesByFamily.get(counterKey) ?? new Set<string>();
+    names.add(normalizeProductKey(row.name));
+    distinctNamesByFamily.set(counterKey, names);
+  }
+
+  const candidates = baseRows.map<MicrosipPriceRow>((row) => {
+    const identity = identityBySourceRow.get(row.sourceRow) ?? null;
+    const namesInFamily = identity
+      ? distinctNamesByFamily.get(familyCountKey(identity, row.category))
+      : null;
+    const useVariantFamily = Boolean(identity && (namesInFamily?.size ?? 0) >= 2);
+
+    return {
+      ...row,
+      productKey: useVariantFamily
+        ? identity!.productKey
+        : normalizeProductKey(row.name),
+      productName: useVariantFamily ? identity!.productName : row.name,
+      flavor: useVariantFamily ? identity!.flavor : null,
+    };
+  });
 
   return {
     sourceProductRows,
@@ -396,14 +523,12 @@ function parseLegacyPriceList(sourceRows: unknown[][]): ParsedRows {
     const firstNamePart = cellText(row[0]);
     const price = money(row[10]);
 
-    // En el formato anterior solamente las filas con precio inician producto.
     if (!firstNamePart || price === null) continue;
 
     sourceProductRows += 1;
 
     const nameParts = [firstNamePart];
 
-    // Microsip parte algunos nombres largos en el siguiente renglón.
     for (
       let nextIndex = index + 1;
       nextIndex < sourceRows.length;
@@ -533,8 +658,6 @@ export async function parseMicrosipPriceList(file: File) {
     const previous = productsByKey.get(duplicateKey);
 
     if (previous) {
-      // Si una de las dos filas tiene SKU y la otra no, se conserva la que
-      // sí tiene SKU. En cualquier otro empate se utiliza la última fila.
       const selected = previous.sku && !product.sku ? previous : product;
       const omitted = selected === previous ? product : previous;
 
