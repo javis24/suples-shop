@@ -39,24 +39,8 @@ export async function GET(request: NextRequest) {
         ? (status as "DRAFT" | "ACTIVE" | "INACTIVE" | "ARCHIVED")
         : undefined;
 
- const variantMatches = q
-  ? await prisma.productVariant.findMany({
-      where: {
-        active: includeAll ? undefined : true,
-        OR: [
-          { sku: { contains: q } },
-          { barcode: { contains: q } },
-          { microsipName: { contains: q } },
-        ],
-      },
-      select: { productId: true },
-      distinct: ["productId"],
-    })
-  : [];
+ 
 
-const variantProductIds = variantMatches.map(
-  (variant) => variant.productId,
-);
     const where = {
       status: includeAll ? adminStatus : ("ACTIVE" as const),
       category: category ? { slug: category } : undefined,
