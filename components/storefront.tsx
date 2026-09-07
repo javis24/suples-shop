@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useCart } from "@/components/cart-provider";
 
@@ -60,6 +61,7 @@ function productPrice(product: Product) {
 }
 
 export function Storefront() {
+  const router = useRouter();
   const { addItem, itemCount, openCart } = useCart();
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -264,6 +266,7 @@ export function Storefront() {
                 const image = product.images[0];
                 const hasDiscount = Number(variant?.compareAtPrice ?? 0) > Number(variant?.price ?? 0);
                 const extraVariants = product.variants.length - 1;
+                const hasOptions = product.variants.length > 1;
 
                 return (
                   <article className="shop-product-card" key={product.id}>
@@ -286,6 +289,10 @@ export function Storefront() {
                       disabled={!variant || stock < 1}
                       onClick={() => {
                         if (!variant) return;
+                        if (hasOptions) {
+                          router.push(`/productos/${product.slug}`);
+                          return;
+                        }
                         addItem({
                           productId: product.id,
                           variantId: variant.id,
@@ -304,7 +311,11 @@ export function Storefront() {
                       }}
                       type="button"
                     >
-                      {stock > 0 ? "Agregar al carrito" : "Sin existencia"}
+                      {stock < 1
+                        ? "Sin existencia"
+                        : hasOptions
+                          ? "Elegir sabor"
+                          : "Agregar al carrito"}
                     </button>
                   </article>
                 );

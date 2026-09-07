@@ -16,6 +16,35 @@ function json(value: unknown): Prisma.InputJsonValue {
   return value as Prisma.InputJsonValue;
 }
 
+function productScore(
+  product: {
+    id: number;
+    name: string;
+    description: string | null;
+    brandId: number | null;
+    featured: boolean;
+    seoTitle: string | null;
+    seoDescription: string | null;
+    _count: { images: number; variants: number };
+  },
+  productName: string,
+) {
+  let score = 0;
+
+  if (normalizeProductKey(product.name) === normalizeProductKey(productName)) {
+    score += 1_000;
+  }
+
+  score += product._count.images * 100;
+  if (product.description) score += 50;
+  if (product.seoTitle) score += 20;
+  if (product.seoDescription) score += 20;
+  if (product.brandId) score += 10;
+  if (product.featured) score += 5;
+
+  return score;
+}
+
 export async function POST(request: Request) {
   let batchId: number | null = null;
 
@@ -38,7 +67,6 @@ export async function POST(request: Request) {
     }
 
     const snapshotAt = new Date();
-
     const batch = await prisma.importBatch.create({
       data: {
         fileName: file.name,
@@ -54,64 +82,73 @@ export async function POST(request: Request) {
 
     const result = await prisma.$transaction(
       async (tx) => {
-        const sourceKeys = parsed.products.map((product) => product.key);
-        const sourceNames = parsed.products.map((product) => product.name);
-        const sourceSkus = parsed.products
-          .map((product) => product.sku)
-          .filter((sku): sku is string => Boolean(sku));
+        const rowsByProductKey = new Map<
+          string,
+          typeof parsed.products
+        >();
+
+        for (const row of parsed.products) {
+          const group = rowsByProductKey.get(row.productKey) ?? [];
+          group.push(row);
+          rowsByProductKey.set(row.productKey, group);
+        }
+
+        const sourceKeys = [...new Set(parsed.products.map((row) => row.key))];
+        const sourceNames = [
+          ...new Set(parsed.products.map((row) => row.name)),
+        ];
+        const sourceSkus = [
+          ...new Set(
+            parsed.products
+              .map((row) => row.sku)
+              .filter((sku): sku is string => Boolean(sku)),
+          ),
+        ];
+        const productKeys = [...rowsByProductKey.keys()];
 
         /*
-         * sourceKey es la identidad permanente de la fila:
-         * SKU:<código de la columna A> o NAME:<nombre normalizado>.
-         * barcode y sku sirven como respaldo para enlazar productos creados
-         * manualmente sin generar un duplicado.
+         * sourceKey identifica una variante concreta. importKey identifica al
+         * producto padre que puede contener varios sabores o presentaciones.
          */
         const existingVariants = await tx.productVariant.findMany({
           where: {
             OR: [
-              {
-                sourceKey: {
-                  in: sourceKeys,
-                },
-              },
+              { sourceKey: { in: sourceKeys } },
               ...(sourceSkus.length > 0
                 ? [
-                    {
-                      barcode: {
-                        in: sourceSkus,
-                      },
-                    },
-                    {
-                      sku: {
-                        in: sourceSkus,
-                      },
-                    },
+                    { barcode: { in: sourceSkus } },
+                    { sku: { in: sourceSkus } },
                   ]
                 : []),
-              {
-                microsipName: {
-                  in: sourceNames,
-                },
-              },
+              { microsipName: { in: sourceNames } },
             ],
           },
           include: {
-            product: true,
+            product: {
+              include: {
+                _count: { select: { images: true, variants: true } },
+              },
+            },
           },
         });
 
-        const existingByKey = new Map<
-          string,
-          (typeof existingVariants)[number]
-        >();
-        const existingByName = new Map<
-          string,
-          (typeof existingVariants)[number]
-        >();
+        const productsWithImportKey = await tx.product.findMany({
+          where: { importKey: { in: productKeys } },
+          include: {
+            _count: { select: { images: true, variants: true } },
+          },
+        });
+
+        type ExistingVariant = (typeof existingVariants)[number];
+        type CandidateProduct = ExistingVariant["product"];
+
+        const existingByKey = new Map<string, ExistingVariant>();
+        const existingByName = new Map<string, ExistingVariant>();
+        const ambiguousNames = new Set<string>();
 
         const registerExistingKey = (
           key: string,
-          variant: (typeof existingVariants)[number],
+          variant: ExistingVariant,
         ) => {
           const collision = existingByKey.get(key);
 
@@ -154,174 +191,311 @@ export async function POST(request: Request) {
           const nameCollision = existingByName.get(nameKey);
 
           if (nameCollision && nameCollision.id !== variant.id) {
-            throw new ApiError(
-              409,
-              `La base de datos contiene dos variantes para el producto ${variant.product.name}`,
-            );
+            existingByName.delete(nameKey);
+            ambiguousNames.add(nameKey);
+          } else if (!ambiguousNames.has(nameKey)) {
+            existingByName.set(nameKey, variant);
           }
-
-          existingByName.set(nameKey, variant);
         }
 
+        const findExistingVariant = (
+          row: (typeof parsed.products)[number],
+        ) =>
+          existingByKey.get(row.key) ??
+          existingByName.get(normalizeProductKey(row.name));
+
+        const productsByImportKey = new Map(
+          productsWithImportKey.map((product) => [product.importKey!, product]),
+        );
+        const claimedProductIds = new Map<number, string>();
         const categoryIds = new Map<string, number>();
         const importRows: Prisma.ImportRowCreateManyInput[] = [];
         const inventoryMovements: Prisma.InventoryMovementCreateManyInput[] =
           [];
         const priceHistory: Prisma.PriceHistoryCreateManyInput[] = [];
+        const movedProducts = new Map<
+          number,
+          {
+            targetProductId: number;
+            movedVariantIds: Set<number>;
+            totalVariants: number;
+          }
+        >();
 
         let createdRows = 0;
         let updatedRows = 0;
         let unchangedPriceRows = 0;
+        let archivedDuplicateProducts = 0;
 
-        for (const row of parsed.products) {
-          const existing =
-            existingByKey.get(row.key) ??
-            existingByName.get(normalizeProductKey(row.name));
+        const resolveCategoryId = async (categoryName: string) => {
+          const cached = categoryIds.get(categoryName);
+          if (cached) return cached;
 
-          if (existing) {
-            const previousPrice = Number(existing.price);
+          const category = await tx.category.upsert({
+            where: { name: categoryName },
+            update: { active: true },
+            create: {
+              name: categoryName,
+              slug: slugify(categoryName),
+              active: true,
+            },
+          });
 
-            // Para productos existentes solamente se cambia el precio.
-            // sourceKey y lastSeenAt son metadatos internos de importación.
-            await tx.productVariant.update({
-              where: {
-                id: existing.id,
-              },
+          categoryIds.set(categoryName, category.id);
+          return category.id;
+        };
+
+        for (const [productKey, groupRows] of rowsByProductKey) {
+          const productName = groupRows[0].productName;
+          const matchedVariants = [
+            ...new Map(
+              groupRows
+                .map(findExistingVariant)
+                .filter(
+                  (variant): variant is ExistingVariant => Boolean(variant),
+                )
+                .map((variant) => [variant.id, variant]),
+            ).values(),
+          ];
+
+          const candidateProducts = [
+            ...new Map<number, CandidateProduct>(
+              matchedVariants.map((variant) => [
+                variant.product.id,
+                variant.product,
+              ]),
+            ).values(),
+          ]
+            .filter((product) => {
+              const claimedKey = claimedProductIds.get(product.id);
+              return (
+                (!claimedKey || claimedKey === productKey) &&
+                (!product.importKey || product.importKey === productKey)
+              );
+            })
+            .sort((first, second) => {
+              const scoreDifference =
+                productScore(second, productName) -
+                productScore(first, productName);
+
+              return scoreDifference || first.id - second.id;
+            });
+
+          const existingParent =
+            productsByImportKey.get(productKey) ?? candidateProducts[0];
+
+          let parentProductId: number;
+
+          if (existingParent) {
+            parentProductId = existingParent.id;
+            claimedProductIds.set(existingParent.id, productKey);
+
+            const excelNames = new Set(
+              groupRows.map((row) => normalizeProductKey(row.name)),
+            );
+            const nameWasImported = excelNames.has(
+              normalizeProductKey(existingParent.name),
+            );
+
+            await tx.product.update({
+              where: { id: existingParent.id },
               data: {
-                sourceKey: row.key,
+                importKey: productKey,
+                // Un nombre personalizado desde el panel nunca se sobrescribe.
+                name: nameWasImported ? productName : undefined,
+              },
+            });
+          } else {
+            const categoryId = await resolveCategoryId(groupRows[0].category);
+            const generatedProductCode = microsipSku(`PRODUCT:${productKey}`);
+            const product = await tx.product.create({
+              data: {
+                importKey: productKey,
+                name: productName,
+                slug: `${slugify(productName)}-${generatedProductCode
+                  .slice(-6)
+                  .toLowerCase()}`,
+                categoryId,
+                status: "ACTIVE",
+              },
+            });
+
+            parentProductId = product.id;
+            claimedProductIds.set(product.id, productKey);
+          }
+
+          for (const row of groupRows) {
+            const existing = findExistingVariant(row);
+
+            if (existing) {
+              const previousPrice = Number(existing.price);
+              const changedParent = existing.productId !== parentProductId;
+
+              await tx.productVariant.update({
+                where: { id: existing.id },
+                data: {
+                  productId: parentProductId,
+                  sourceKey: row.key,
+                  microsipName: row.name,
+                  flavor: row.flavor,
+                  price: row.price,
+                  lastSeenAt: snapshotAt,
+                },
+              });
+
+              if (changedParent) {
+                const moved = movedProducts.get(existing.productId);
+
+                if (moved && moved.targetProductId !== parentProductId) {
+                  throw new ApiError(
+                    409,
+                    `El producto ${existing.product.name} coincide con dos grupos diferentes`,
+                  );
+                }
+
+                const movement = moved ?? {
+                  targetProductId: parentProductId,
+                  movedVariantIds: new Set<number>(),
+                  totalVariants: existing.product._count.variants,
+                };
+
+                movement.movedVariantIds.add(existing.id);
+                movedProducts.set(existing.productId, movement);
+              }
+
+              if (previousPrice !== row.price) {
+                priceHistory.push({
+                  variantId: existing.id,
+                  previousPrice: existing.price,
+                  newPrice: row.price,
+                  reason: "Precio público actualizado desde Excel",
+                  importBatchId: batch.id,
+                  userId: user.id,
+                });
+              } else {
+                unchangedPriceRows += 1;
+              }
+
+              importRows.push({
+                importBatchId: batch.id,
+                variantId: existing.id,
+                sourceRow: row.sourceRow,
+                status: "UPDATED",
+                categoryName: row.category,
+                productName: row.name,
+                stock: row.stock,
                 price: row.price,
+                message: changedParent
+                  ? "Se agrupó como variante del producto principal"
+                  : previousPrice === row.price
+                    ? "El precio no presentó cambios"
+                    : "Se actualizó únicamente el precio",
+                sourceData: json({
+                  key: row.key,
+                  productKey: row.productKey,
+                  productName: row.productName,
+                  flavor: row.flavor,
+                  sku: row.sku,
+                  name: row.name,
+                  category: row.category,
+                  unit: row.unit,
+                  excelStock: row.stock,
+                  previousPrice,
+                  newPrice: row.price,
+                }),
+              });
+
+              updatedRows += 1;
+              continue;
+            }
+
+            const generatedSku = microsipSku(row.key);
+            const createdVariant = await tx.productVariant.create({
+              data: {
+                productId: parentProductId,
+                sku: generatedSku,
+                barcode: row.sku,
+                sourceKey: row.key,
+                microsipName: row.name,
+                flavor: row.flavor,
+                unit: row.unit,
+                price: row.price,
+                cost: 0,
+                stock: row.stock,
+                lowStockAt: 1,
+                active: true,
                 lastSeenAt: snapshotAt,
               },
             });
 
-            if (previousPrice !== row.price) {
-              priceHistory.push({
-                variantId: existing.id,
-                previousPrice: existing.price,
-                newPrice: row.price,
-                reason: "Precio público actualizado desde Excel",
+            if (row.stock !== 0) {
+              inventoryMovements.push({
+                variantId: createdVariant.id,
+                type: "IMPORT",
+                quantity: row.stock,
+                previousStock: 0,
+                newStock: row.stock,
+                reason: "Nueva variante agregada desde ExportacionWeb",
                 importBatchId: batch.id,
                 userId: user.id,
               });
-            } else {
-              unchangedPriceRows += 1;
             }
 
             importRows.push({
               importBatchId: batch.id,
-              variantId: existing.id,
+              variantId: createdVariant.id,
               sourceRow: row.sourceRow,
-              status: "UPDATED",
+              status: "CREATED",
               categoryName: row.category,
               productName: row.name,
               stock: row.stock,
               price: row.price,
-              message:
-                previousPrice === row.price
-                  ? "El precio no presentó cambios"
-                  : "Se actualizó únicamente el precio",
+              message: row.flavor
+                ? `Se creó la variante ${row.flavor}`
+                : "Se creó el producto y su variante principal",
               sourceData: json({
                 key: row.key,
+                productKey: row.productKey,
+                productName: row.productName,
+                flavor: row.flavor,
                 sku: row.sku,
                 name: row.name,
                 category: row.category,
                 unit: row.unit,
-                excelStock: row.stock,
-                previousPrice,
-                newPrice: row.price,
+                price: row.price,
+                stock: row.stock,
               }),
             });
 
-            updatedRows += 1;
-            continue;
+            createdRows += 1;
           }
+        }
 
-          let categoryId = categoryIds.get(row.category);
+        /*
+         * Si todas las variantes de un producto anterior se movieron al
+         * producto padre, trasladamos sus imágenes y lo archivamos. Nunca se
+         * elimina físicamente, por lo que el historial permanece intacto.
+         */
+        for (const [oldProductId, moved] of movedProducts) {
+          if (moved.movedVariantIds.size !== moved.totalVariants) continue;
 
-          if (!categoryId) {
-            const category = await tx.category.upsert({
-              where: {
-                name: row.category,
-              },
-              update: {
-                active: true,
-              },
-              create: {
-                name: row.category,
-                slug: slugify(row.category),
-                active: true,
-              },
-            });
-
-            categoryId = category.id;
-            categoryIds.set(row.category, category.id);
-          }
-
-          const generatedSku = microsipSku(row.key);
-          const slug = `${slugify(row.name)}-${generatedSku
-            .slice(-6)
-            .toLowerCase()}`;
-
-          const createdProduct = await tx.product.create({
+          await tx.productImage.updateMany({
+            where: { productId: oldProductId },
             data: {
-              name: row.name,
-              slug,
-              categoryId,
-              status: "ACTIVE",
+              productId: moved.targetProductId,
+              primary: false,
             },
           });
 
-          const createdVariant = await tx.productVariant.create({
+          await tx.product.update({
+            where: { id: oldProductId },
             data: {
-              productId: createdProduct.id,
-              sku: generatedSku,
-              barcode: row.sku,
-              sourceKey: row.key,
-              microsipName: row.name,
-              unit: row.unit,
-              price: row.price,
-              cost: 0,
-              stock: row.stock,
-              lowStockAt: 1,
-              active: true,
-              lastSeenAt: snapshotAt,
+              importKey: null,
+              status: "ARCHIVED",
             },
           });
 
-          if (row.stock !== 0) {
-            inventoryMovements.push({
-              variantId: createdVariant.id,
-              type: "IMPORT",
-              quantity: row.stock,
-              previousStock: 0,
-              newStock: row.stock,
-              reason: "Producto nuevo agregado desde ExportacionWeb",
-              importBatchId: batch.id,
-              userId: user.id,
-            });
-          }
-
-          importRows.push({
-            importBatchId: batch.id,
-            variantId: createdVariant.id,
-            sourceRow: row.sourceRow,
-            status: "CREATED",
-            categoryName: row.category,
-            productName: row.name,
-            stock: row.stock,
-            price: row.price,
-            sourceData: json({
-              key: row.key,
-              sku: row.sku,
-              name: row.name,
-              category: row.category,
-              unit: row.unit,
-              price: row.price,
-              stock: row.stock,
-            }),
-          });
-
-          createdRows += 1;
+          archivedDuplicateProducts += 1;
         }
 
         for (const skipped of parsed.skippedRows) {
@@ -353,9 +527,7 @@ export async function POST(request: Request) {
         }
 
         if (importRows.length > 0) {
-          await tx.importRow.createMany({
-            data: importRows,
-          });
+          await tx.importRow.createMany({ data: importRows });
         }
 
         if (inventoryMovements.length > 0) {
@@ -365,18 +537,20 @@ export async function POST(request: Request) {
         }
 
         if (priceHistory.length > 0) {
-          await tx.priceHistory.createMany({
-            data: priceHistory,
-          });
+          await tx.priceHistory.createMany({ data: priceHistory });
         }
 
         const skippedRows =
           parsed.skippedRows.length + parsed.duplicateRows.length;
+        const groupedProducts = [...rowsByProductKey.values()].filter(
+          (rows) => rows.length > 1,
+        ).length;
+        const groupedVariants = [...rowsByProductKey.values()]
+          .filter((rows) => rows.length > 1)
+          .reduce((total, rows) => total + rows.length, 0);
 
         await tx.importBatch.update({
-          where: {
-            id: batch.id,
-          },
+          where: { id: batch.id },
           data: {
             status: "COMPLETED",
             createdRows,
@@ -395,6 +569,9 @@ export async function POST(request: Request) {
           unchangedPriceRows,
           skippedRows,
           duplicateRows: parsed.duplicateRows.length,
+          groupedProducts,
+          groupedVariants,
+          archivedDuplicateProducts,
           errorRows: 0,
         };
       },
@@ -415,9 +592,7 @@ export async function POST(request: Request) {
     if (batchId) {
       await prisma.importBatch
         .update({
-          where: {
-            id: batchId,
-          },
+          where: { id: batchId },
           data: {
             status: "FAILED",
             finishedAt: new Date(),

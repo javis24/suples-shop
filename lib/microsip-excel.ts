@@ -5,6 +5,9 @@ import { ApiError } from "@/lib/api";
 export type MicrosipPriceRow = {
   sourceRow: number;
   key: string;
+  productKey: string;
+  productName: string;
+  flavor: string | null;
   sku: string | null;
   name: string;
   category: string;
@@ -98,6 +101,104 @@ export function normalizeProductKey(value: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 255);
+}
+
+type ProductIdentity = {
+  productKey: string;
+  productName: string;
+  flavor: string | null;
+};
+
+/*
+ * Solamente se separan sufijos conocidos. Esto evita agrupar por accidente
+ * productos diferentes que únicamente comparten las primeras palabras.
+ * Agrega aquí nuevos sabores tal como aparecen al final del nombre de
+ * Microsip. Los sabores largos se prueban antes que los cortos.
+ */
+const FLAVOR_SUFFIXES = [
+  "STRAWBERRY KIWI SMASH",
+  "CHOCOLATE PEANUT BUTTER",
+  "COOKIES AND CREAM",
+  "STRAWBERRY LEMONADE",
+  "BLUE RASPBERRY",
+  "COTTON CANDY",
+  "FRUIT PUNCH",
+  "GREEN APPLE",
+  "ORANGE MANGO",
+  "PEANUT BUTTER",
+  "PINEAPPLE MANGO",
+  "SOUR GUMMY",
+  "TROPICAL PUNCH",
+  "WATERMELON LIME",
+  "JACKED GRAPE",
+  "MANIAC MANGO",
+  "BIRTHDAY CAKE",
+  "CINNAMON ROLL",
+  "DOUBLE CHOCOLATE",
+  "FRESA KIWI",
+  "FRUTOS ROJOS",
+  "LEMON LIME",
+  "MANGO PINEAPPLE",
+  "STRAWBERRY KIWI",
+  "VANILLA ICE CREAM",
+  "WHITE CHOCOLATE",
+  "BLACK CHERRY",
+  "BLUE RAZZ",
+  "CHERRY LIMEADE",
+  "CHOCOLATE",
+  "CHOCOLATE MILK",
+  "COCONUT",
+  "COLA",
+  "FRESA",
+  "FRUIT LOOPS",
+  "GRAPE",
+  "LEMONADE",
+  "MANGO",
+  "MANGONADA",
+  "NARANJA",
+  "PINA COLADA",
+  "PINEAPPLE",
+  "STRAWBERRY",
+  "TROPICAL",
+  "VAINILLA",
+  "VANILLA",
+  "WATERMELON",
+] as const;
+
+const NORMALIZED_FLAVOR_SUFFIXES = FLAVOR_SUFFIXES.map((flavor) => ({
+  flavor,
+  key: normalizeProductKey(flavor),
+})).sort((first, second) => second.key.length - first.key.length);
+
+export function resolveProductIdentity(name: string): ProductIdentity {
+  const normalizedName = normalizeProductKey(name);
+
+  for (const candidate of NORMALIZED_FLAVOR_SUFFIXES) {
+    const suffix = ` ${candidate.key}`;
+
+    if (!normalizedName.endsWith(suffix)) continue;
+
+    const productName = normalizedName
+      .slice(0, -suffix.length)
+      .replace(/\s+NEW$/i, "")
+      .trim();
+
+    // Evita convertir nombres demasiado generales, por ejemplo
+    // "MANGO" o "BCAA MANGO", en agrupaciones inseguras.
+    if (productName.split(" ").length < 2) continue;
+
+    return {
+      productKey: normalizeProductKey(productName),
+      productName,
+      flavor: candidate.flavor,
+    };
+  }
+
+  return {
+    productKey: normalizedName,
+    productName: name,
+    flavor: null,
+  };
 }
 
 export function buildProductSourceKey(
@@ -244,9 +345,14 @@ function parseWebExport(sourceRows: unknown[][]): ParsedRows {
       continue;
     }
 
+    const identity = resolveProductIdentity(name);
+
     candidates.push({
       sourceRow: index + 1,
       key: buildProductSourceKey(sku, name),
+      productKey: identity.productKey,
+      productName: identity.productName,
+      flavor: identity.flavor,
       sku,
       name,
       category,
@@ -361,9 +467,14 @@ function parseLegacyPriceList(sourceRows: unknown[][]): ParsedRows {
       continue;
     }
 
+    const identity = resolveProductIdentity(name);
+
     candidates.push({
       sourceRow: index + 1,
       key: buildProductSourceKey(null, name),
+      productKey: identity.productKey,
+      productName: identity.productName,
+      flavor: identity.flavor,
       sku: null,
       name,
       category,

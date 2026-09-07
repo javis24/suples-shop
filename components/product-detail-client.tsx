@@ -114,7 +114,7 @@ export function ProductDetailClient({ product }: { product: ProductDetail }) {
           <div className="product-detail-price"><strong>{money.format(Number(variant?.price ?? 0))}</strong>{hasOffer ? <><del>{money.format(Number(variant.compareAtPrice))}</del><span>Ahorras {discount}%</span></> : null}</div>
           <div className={variant?.stock > 0 ? "product-detail-stock" : "product-detail-stock empty"}><span />{variant?.stock > 0 ? `${variant.stock} ${variant.unit.toLowerCase()} disponibles` : "Producto agotado"}</div>
 
-          {product.variants.length > 1 ? <div className="product-detail-variants"><strong>Elige una presentación</strong><div>{product.variants.map((item, index) => <button className={selectedVariant === index ? "active" : ""} disabled={item.stock < 1} key={item.id} onClick={() => setSelectedVariant(index)} type="button">{variantLabel(item)}</button>)}</div></div> : null}
+          {product.variants.length > 1 ? <div className="product-detail-variants"><strong>Elige un sabor o presentación</strong><div>{product.variants.map((item, index) => <button className={selectedVariant === index ? "active" : ""} disabled={item.stock < 1} key={item.id} onClick={() => setSelectedVariant(index)} type="button">{variantLabel(item)}</button>)}</div></div> : null}
 
           <button
             className="product-detail-add"
