@@ -6,9 +6,9 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient() {
-  // Cada función de Vercel puede crear su propio pool.
-  // Usamos una conexión por instancia para no saturar Hostinger.
-  const connectionLimit = process.env.NODE_ENV === "production" ? 1 : 5;
+  const production = process.env.NODE_ENV === "production";
+
+  const connectionLimit = production ? 1 : 5;
 
   const adapter = new PrismaMariaDb({
     host: process.env.DB_HOST ?? "localhost",
@@ -17,6 +17,8 @@ function createPrismaClient() {
     password: process.env.DB_PASSWORD ?? "",
     database: process.env.DB_NAME ?? "suples_shop",
     connectionLimit,
+    minimumIdle: 0,
+    idleTimeout: production ? 5 : 60,
     connectTimeout: 10_000,
     acquireTimeout: 30_000,
   });
@@ -26,6 +28,5 @@ function createPrismaClient() {
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
+
+globalForPrisma.prisma = prisma;
