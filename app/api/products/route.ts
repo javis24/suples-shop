@@ -56,11 +56,25 @@ export async function GET(request: NextRequest) {
       category: category ? { slug: category } : undefined,
       brand: brand ? { slug: brand } : undefined,
       OR: q
-  ? [
-      { name: { contains: q } },
-      { description: { contains: q } },
-    ]
-  : undefined,
+        ? [
+            { name: { contains: q } },
+            { description: { contains: q } },
+            { brand: { is: { name: { contains: q } } } },
+            {
+              variants: {
+                some: {
+                  OR: [
+                    { sku: { contains: q } },
+                    { barcode: { contains: q } },
+                    { microsipName: { contains: q } },
+                    { flavor: { contains: q } },
+                    { presentation: { contains: q } },
+                  ],
+                },
+              },
+            },
+          ]
+        : undefined,
       variants: lowStock
         ? { some: { active: true, stock: { lte: lowStockAt } } }
         : includeAll

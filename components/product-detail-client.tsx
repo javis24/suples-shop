@@ -42,7 +42,10 @@ const money = new Intl.NumberFormat("es-MX", {
 export function ProductDetailClient({ product }: { product: ProductDetail }) {
   const { addItem, itemCount, openCart } = useCart();
   const [selectedImage, setSelectedImage] = useState(0);
-  const [selectedVariant, setSelectedVariant] = useState(0);
+  const [selectedVariant, setSelectedVariant] = useState(() => {
+    const availableIndex = product.variants.findIndex((item) => item.stock > 0);
+    return availableIndex >= 0 ? availableIndex : 0;
+  });
   const variant = product.variants[selectedVariant] || product.variants[0];
   const image = product.images[selectedImage] || product.images[0];
   const hasOffer =

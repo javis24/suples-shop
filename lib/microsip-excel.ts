@@ -198,6 +198,13 @@ function stockNumber(value: unknown): number | null {
 
 function cleanProductName(value: string): string {
   return value
+    // Microsip puede exportar la presentación pegada al sabor, por ejemplo
+    // "30 SERVJACKED GRAPE". Separamos únicamente unidades precedidas por
+    // una cantidad para no modificar palabras normales que empiecen con SERV.
+    .replace(
+      /(\d+(?:[.,]\d+)?\s*)(SERVS|SERV(?!S)|LBS|LB(?!S)|OZ|GRS|KG|ML|LT|PACK|SCOOPS|SCOOP(?!S)|PORCIONES|PORCION(?!E)|CAPS|CAP(?!S)|TABS|TAB(?!S)|TABLETAS|TABLETA(?!S)|CT|PIEZAS|PIEZA(?!S))(?=[A-ZÁÉÍÓÚÜÑ])/gi,
+      "$1$2 ",
+    )
     .replace(/\s+/g, " ")
     .replace(/\s+([,.;:)])/g, "$1")
     .replace(/[.\s]+$/g, "")
@@ -318,7 +325,7 @@ function deriveVariantCandidate(
     const flavor = cleanProductName(
       name
         .slice(end)
-        .replace(/^[\s)\]\-–—:]+/, "")
+        .replace(/^[\s.)\]\-–—:]+/, "")
         .replace(/^NEW\s+/i, "")
         .replace(/\*+$/g, ""),
     );
