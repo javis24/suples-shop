@@ -5,28 +5,35 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-function createPrismaClient() {
-  const production = process.env.NODE_ENV === "production";
+function requiredEnv(name: string): string {
+  const value = process.env[name]?.trim();
 
-  const connectionLimit = production ? 1 : 5;
+  if (!value) {
+    throw new Error(`Falta configurar la variable ${name}`);
+  }
 
-  const adapter = new PrismaMariaDb({
-    host: process.env.DB_HOST ?? "localhost",
-    port: Number(process.env.DB_PORT ?? 3306),
-    user: process.env.DB_USER ?? "root",
-    password: process.env.DB_PASSWORD ?? "",
-    database: process.env.DB_NAME ?? "suples_shop",
-    connectionLimit,
-    minimumIdle: 0,
-    idleTimeout: production ? 5 : 60,
-    connectTimeout: 10_000,
-    acquireTimeout: 30_000,
-  });
-
-  return new PrismaClient({ adapter });
+  return value;
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+function createPrismaClient() {
+  const databaseUrl = requiredEnv("DATABASE_URL");
 
+  const adapter = new PrismaMariaDb(databaseUrl, {
+    // Evita conflictos entre utf8mb4_unicode_ci y utf8mb4_bin
+    // en búsquedas LIKE, contains, startsWith y endsWith.
+    useTextProtocol: true,
+
+    onConnectionError(error) {
+      console.error("MariaDB connection error:", error);
+    },
+  });
+
+  return new PrismaClient({
+    adapter,
+  });
+}
+
+export const prisma =
+  globalForPrisma.prisma ?? createPrismaClient();
 
 globalForPrisma.prisma = prisma;
