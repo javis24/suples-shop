@@ -13,12 +13,22 @@ import { productSchema } from "@/lib/validators";
 
 export const runtime = "nodejs";
 
-const productInclude = {
-  category: true,
-  brand: true,
-  variants: { orderBy: { id: "asc" as const } },
-  images: { orderBy: [{ primary: "desc" as const }, { sortOrder: "asc" as const }] },
-};
+function productInclude(includeInactiveVariants: boolean) {
+  return {
+    category: true,
+    brand: true,
+    variants: {
+      where: includeInactiveVariants ? undefined : { active: true },
+      orderBy: { id: "asc" as const },
+    },
+    images: {
+      orderBy: [
+        { primary: "desc" as const },
+        { sortOrder: "asc" as const },
+      ],
+    },
+  };
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -62,7 +72,7 @@ export async function GET(request: NextRequest) {
     // evita competir por una conexión transaccional en pools remotos pequeños.
     const products = await prisma.product.findMany({
       where,
-      include: productInclude,
+      include: productInclude(includeAll),
       orderBy: [{ featured: "desc" }, { updatedAt: "desc" }],
       skip,
       take: limit,
@@ -120,7 +130,7 @@ export async function POST(request: Request) {
             }
           : undefined,
       },
-      include: productInclude,
+      include: productInclude(true),
     });
 
     return created(product);

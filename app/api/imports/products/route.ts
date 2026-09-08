@@ -226,6 +226,7 @@ export async function POST(request: Request) {
         let updatedRows = 0;
         let unchangedPriceRows = 0;
         let archivedDuplicateProducts = 0;
+        let deactivatedVariants = 0;
 
         const resolveCategoryId = async (categoryName: string) => {
           const cached = categoryIds.get(categoryName);
@@ -329,6 +330,7 @@ export async function POST(request: Request) {
 
             if (existing) {
               const previousPrice = Number(existing.price);
+              const previousStock = existing.stock;
               const changedParent = existing.productId !== parentProductId;
 
               await tx.productVariant.update({
@@ -338,10 +340,26 @@ export async function POST(request: Request) {
                   sourceKey: row.key,
                   microsipName: row.name,
                   flavor: row.flavor,
+                  presentation: row.presentation,
                   price: row.price,
+                  stock: row.stock,
+                  active: true,
                   lastSeenAt: snapshotAt,
                 },
               });
+
+              if (previousStock !== row.stock) {
+                inventoryMovements.push({
+                  variantId: existing.id,
+                  type: "IMPORT",
+                  quantity: row.stock - previousStock,
+                  previousStock,
+                  newStock: row.stock,
+                  reason: "Existencia actualizada desde ExportacionWeb",
+                  importBatchId: batch.id,
+                  userId: user.id,
+                });
+              }
 
               if (changedParent) {
                 const moved = movedProducts.get(existing.productId);
@@ -387,14 +405,19 @@ export async function POST(request: Request) {
                 price: row.price,
                 message: changedParent
                   ? "Se agrupó como variante del producto principal"
-                  : previousPrice === row.price
-                    ? "El precio no presentó cambios"
-                    : "Se actualizó únicamente el precio",
+                  : previousPrice !== row.price && previousStock !== row.stock
+                    ? "Se actualizaron precio y existencia"
+                    : previousPrice !== row.price
+                      ? "Se actualizó el precio"
+                      : previousStock !== row.stock
+                        ? "Se actualizó la existencia"
+                        : "El producto no presentó cambios",
                 sourceData: json({
                   key: row.key,
                   productKey: row.productKey,
                   productName: row.productName,
                   flavor: row.flavor,
+                  presentation: row.presentation,
                   sku: row.sku,
                   name: row.name,
                   category: row.category,
@@ -418,6 +441,7 @@ export async function POST(request: Request) {
                 sourceKey: row.key,
                 microsipName: row.name,
                 flavor: row.flavor,
+                presentation: row.presentation,
                 unit: row.unit,
                 price: row.price,
                 cost: 0,
@@ -458,6 +482,7 @@ export async function POST(request: Request) {
                 productKey: row.productKey,
                 productName: row.productName,
                 flavor: row.flavor,
+                presentation: row.presentation,
                 sku: row.sku,
                 name: row.name,
                 category: row.category,
@@ -469,6 +494,46 @@ export async function POST(request: Request) {
 
             createdRows += 1;
           }
+        }
+
+        /*
+         * ExportacionWeb representa una fotografía completa del catálogo.
+         * Una variante importada que ya no aparece queda agotada e inactiva,
+         * pero conserva su ID para no afectar pedidos históricos.
+         */
+        const unseenVariants = await tx.productVariant.findMany({
+          where: {
+            active: true,
+            sourceKey: { not: null },
+            OR: [
+              { lastSeenAt: null },
+              { lastSeenAt: { lt: snapshotAt } },
+            ],
+          },
+          select: { id: true, stock: true },
+        });
+
+        for (const variant of unseenVariants) {
+          if (variant.stock === 0) continue;
+
+          inventoryMovements.push({
+            variantId: variant.id,
+            type: "IMPORT",
+            quantity: -variant.stock,
+            previousStock: variant.stock,
+            newStock: 0,
+            reason: "Variante ausente en el último ExportacionWeb",
+            importBatchId: batch.id,
+            userId: user.id,
+          });
+        }
+
+        if (unseenVariants.length > 0) {
+          await tx.productVariant.updateMany({
+            where: { id: { in: unseenVariants.map((variant) => variant.id) } },
+            data: { stock: 0, active: false },
+          });
+          deactivatedVariants = unseenVariants.length;
         }
 
         /*
@@ -572,6 +637,7 @@ export async function POST(request: Request) {
           groupedProducts,
           groupedVariants,
           archivedDuplicateProducts,
+          deactivatedVariants,
           errorRows: 0,
         };
       },

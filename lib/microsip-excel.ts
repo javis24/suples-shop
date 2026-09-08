@@ -8,6 +8,7 @@ export type MicrosipPriceRow = {
   productKey: string;
   productName: string;
   flavor: string | null;
+  presentation: string | null;
   sku: string | null;
   name: string;
   category: string;
@@ -36,10 +37,11 @@ type ParsedRows = {
   skippedRows: SkippedExcelRow[];
 };
 
-type ProductIdentity = {
+export type ProductIdentity = {
   productKey: string;
   productName: string;
   flavor: string | null;
+  presentation: string | null;
 };
 
 type WebExportBaseRow = {
@@ -100,6 +102,11 @@ const VARIANT_CATEGORIES = new Set([
   "SHAKERS",
   "SNAKS Y BEBIDAS",
   "SNACKS Y BEBIDAS",
+]);
+
+const APPROXIMATE_LB_CATEGORIES = new Set([
+  "PROTEINAS",
+  "GANADORES DE MASA",
 ]);
 
 const PRESENTATION_PATTERN =
@@ -213,12 +220,51 @@ export function normalizeProductKey(value: string): string {
     .slice(0, 255);
 }
 
+/**
+ * Algunas marcas reportan un peso ligeramente diferente según el sabor
+ * (por ejemplo 4.67 y 4.8 LBS), aunque comercialmente sea la misma línea.
+ * Solamente normalizamos esos rangos para formar la clave del producto
+ * padre; la presentación exacta permanece guardada en cada variante.
+ */
+function normalizeFamilyPresentation(
+  productName: string,
+  category = "",
+): string {
+  if (!APPROXIMATE_LB_CATEGORIES.has(normalizeProductKey(category))) {
+    return cleanProductName(productName);
+  }
+
+  return cleanProductName(
+    productName.replace(
+      /\b(\d+(?:[.,]\d+)?)\s*LBS?\b/gi,
+      (match, rawWeight: string) => {
+        const weight = Number(rawWeight.replace(",", "."));
+
+        if (!Number.isFinite(weight)) return match;
+        if (weight >= 1.8 && weight <= 2.2) return "2 LBS";
+        if (weight >= 4.5 && weight <= 5.2) return "5 LBS";
+
+        return `${weight} LBS`;
+      },
+    ),
+  );
+}
+
+function findPresentation(value: string): string | null {
+  const matches = Array.from(value.matchAll(PRESENTATION_PATTERN));
+  const lastMatch = matches.at(-1)?.[0];
+  return lastMatch ? cleanProductName(lastMatch.toUpperCase()) : null;
+}
+
 const NORMALIZED_FLAVOR_SUFFIXES = FLAVOR_SUFFIXES.map((flavor) => ({
   flavor,
   key: normalizeProductKey(flavor),
 })).sort((first, second) => second.key.length - first.key.length);
 
-export function resolveProductIdentity(name: string): ProductIdentity {
+export function resolveProductIdentity(
+  name: string,
+  category = "",
+): ProductIdentity {
   const normalizedName = normalizeProductKey(name);
 
   for (const candidate of NORMALIZED_FLAVOR_SUFFIXES) {
@@ -233,10 +279,13 @@ export function resolveProductIdentity(name: string): ProductIdentity {
 
     if (productName.split(" ").length < 2) continue;
 
+    const familyName = normalizeFamilyPresentation(productName, category);
+
     return {
-      productKey: normalizeProductKey(productName),
-      productName,
+      productKey: normalizeProductKey(familyName),
+      productName: familyName,
       flavor: candidate.flavor,
+      presentation: findPresentation(productName),
     };
   }
 
@@ -244,6 +293,7 @@ export function resolveProductIdentity(name: string): ProductIdentity {
     productKey: normalizedName,
     productName: name,
     flavor: null,
+    presentation: findPresentation(name),
   };
 }
 
@@ -262,7 +312,7 @@ function deriveVariantCandidate(
 
   if (lastMatch?.index !== undefined) {
     const end = lastMatch.index + lastMatch[0].length;
-    const productName = cleanProductName(
+    const exactProductName = cleanProductName(
       name.slice(0, end).replace(/[()[\]]/g, " "),
     );
     const flavor = cleanProductName(
@@ -273,21 +323,30 @@ function deriveVariantCandidate(
         .replace(/\*+$/g, ""),
     );
 
-    if (productName.split(" ").length >= 2 && flavor) {
+    if (exactProductName.split(" ").length >= 2 && flavor) {
+      const productName = normalizeFamilyPresentation(
+        exactProductName,
+        category,
+      );
+
       return {
         productKey: normalizeProductKey(productName),
         productName,
         flavor,
+        presentation: cleanProductName(lastMatch[0].toUpperCase()),
       };
     }
   }
 
-  const knownFlavorIdentity = resolveProductIdentity(name);
+  const knownFlavorIdentity = resolveProductIdentity(name, category);
   return knownFlavorIdentity.flavor ? knownFlavorIdentity : null;
 }
 
-function familyCountKey(identity: ProductIdentity, category: string): string {
-  return `${normalizeProductKey(category)}::${identity.productKey}`;
+export function resolveVariantIdentity(
+  name: string,
+  category: string,
+): ProductIdentity | null {
+  return deriveVariantCandidate(name, category);
 }
 
 export function buildProductSourceKey(
@@ -458,26 +517,18 @@ function parseWebExport(sourceRows: unknown[][]): ParsedRows {
   }
 
   const identityBySourceRow = new Map<number, ProductIdentity | null>();
-  const distinctNamesByFamily = new Map<string, Set<string>>();
 
   for (const row of baseRows) {
     const identity = deriveVariantCandidate(row.name, row.category);
     identityBySourceRow.set(row.sourceRow, identity);
-
-    if (!identity) continue;
-
-    const counterKey = familyCountKey(identity, row.category);
-    const names = distinctNamesByFamily.get(counterKey) ?? new Set<string>();
-    names.add(normalizeProductKey(row.name));
-    distinctNamesByFamily.set(counterKey, names);
   }
 
   const candidates = baseRows.map<MicrosipPriceRow>((row) => {
     const identity = identityBySourceRow.get(row.sourceRow) ?? null;
-    const namesInFamily = identity
-      ? distinctNamesByFamily.get(familyCountKey(identity, row.category))
-      : null;
-    const useVariantFamily = Boolean(identity && (namesInFamily?.size ?? 0) >= 2);
+    // La identidad no depende de que el Excel actual tenga dos sabores.
+    // Así, una familia no vuelve a separarse cuando temporalmente queda
+    // una sola variante con existencia.
+    const useVariantFamily = Boolean(identity);
 
     return {
       ...row,
@@ -486,6 +537,7 @@ function parseWebExport(sourceRows: unknown[][]): ParsedRows {
         : normalizeProductKey(row.name),
       productName: useVariantFamily ? identity!.productName : row.name,
       flavor: useVariantFamily ? identity!.flavor : null,
+      presentation: useVariantFamily ? identity!.presentation : null,
     };
   });
 
@@ -600,6 +652,7 @@ function parseLegacyPriceList(sourceRows: unknown[][]): ParsedRows {
       productKey: identity.productKey,
       productName: identity.productName,
       flavor: identity.flavor,
+      presentation: identity.presentation,
       sku: null,
       name,
       category,
