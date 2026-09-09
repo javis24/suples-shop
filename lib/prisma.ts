@@ -15,22 +15,66 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function createPrismaClient() {
+function databaseUrlWithPoolOptions() {
   const databaseUrl = requiredEnv("DATABASE_URL");
 
-  const adapter = new PrismaMariaDb(databaseUrl, {
-    // Evita conflictos entre utf8mb4_unicode_ci y utf8mb4_bin
-    // en búsquedas LIKE, contains, startsWith y endsWith.
-    useTextProtocol: true,
+  let url: URL;
 
-    onConnectionError(error) {
-      console.error("MariaDB connection error:", error);
+  try {
+    url = new URL(databaseUrl);
+  } catch {
+    throw new Error("DATABASE_URL no tiene un formato válido");
+  }
+
+  if (url.protocol !== "mysql:" && url.protocol !== "mariadb:") {
+    throw new Error(
+      "DATABASE_URL debe comenzar con mysql:// o mariadb://",
+    );
+  }
+
+  if (
+    !url.hostname ||
+    !url.username ||
+    !url.pathname.replace(/^\/+/, "")
+  ) {
+    throw new Error(
+      "DATABASE_URL no contiene host, usuario o base de datos",
+    );
+  }
+
+const production = process.env.NODE_ENV === "production";
+
+url.searchParams.set(
+  "connectionLimit",
+  production ? "1" : "5",
+);
+url.searchParams.set("minimumIdle", "1");
+url.searchParams.set(
+  "idleTimeout",
+  production ? "30" : "60",
+);
+url.searchParams.set("connectTimeout", "10000");
+url.searchParams.set("acquireTimeout", "10000");
+url.searchParams.set(
+  "collation",
+  "UTF8MB4_UNICODE_CI",
+);
+
+  return url.toString();
+}
+
+function createPrismaClient() {
+  const adapter = new PrismaMariaDb(
+    databaseUrlWithPoolOptions(),
+    {
+      useTextProtocol: true,
+      onConnectionError(error) {
+        console.error("MariaDB connection error:", error);
+      },
     },
-  });
+  );
 
-  return new PrismaClient({
-    adapter,
-  });
+  return new PrismaClient({ adapter });
 }
 
 export const prisma =
