@@ -146,7 +146,8 @@ function numberValue(value: string | number | null | undefined) {
 }
 
 function productDraft(product: Product): ProductDraft {
-  const variant = product.variants[0];
+  const variant =
+    product.variants.find((item) => item.active) ?? product.variants[0];
   return {
     id: product.id,
     name: product.name,
@@ -239,8 +240,6 @@ export function ProductAdminClient() {
   const [imageUrl, setImageUrl] = useState("");
   const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
   const [removedBlobUrls, setRemovedBlobUrls] = useState<string[]>([]);
-  const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
-  const [merging, setMerging] = useState(false);
 
   const loadProducts = useCallback(async () => {
     if (!user) return;
@@ -257,10 +256,6 @@ export function ProductAdminClient() {
 
       const result = await request<Product[]>(`/api/products?${params}`);
       setProducts(result.data);
-      const visibleIds = new Set(result.data.map((product) => product.id));
-      setSelectedProductIds((current) =>
-        current.filter((productId) => visibleIds.has(productId)),
-      );
       if (result.meta) setPagination(result.meta);
     } catch (error) {
       setNotice({
@@ -632,69 +627,6 @@ try {
     }
   }
 
-  function toggleProductSelection(productId: number) {
-    setSelectedProductIds((current) =>
-      current.includes(productId)
-        ? current.filter((id) => id !== productId)
-        : [...current, productId],
-    );
-  }
-
-  async function mergeSelectedProducts() {
-    if (selectedProductIds.length < 2) {
-      setNotice({
-        type: "error",
-        message: "Selecciona al menos dos productos de la misma familia.",
-      });
-      return;
-    }
-
-    const selectedNames = products
-      .filter((product) => selectedProductIds.includes(product.id))
-      .map((product) => `• ${product.name}`)
-      .join("\n");
-
-    if (
-      !window.confirm(
-        `Se conservará automáticamente el producto con más información e imágenes. Los demás quedarán archivados.\n\n${selectedNames}\n\n¿Deseas continuar?`,
-      )
-    ) {
-      return;
-    }
-
-    setMerging(true);
-    setNotice({ type: "info", message: "Combinando productos y variantes…" });
-
-    try {
-      const result = await request<{
-        productName: string;
-        movedVariants: number;
-        archivedProducts: number;
-      }>("/api/products/merge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productIds: selectedProductIds }),
-      });
-
-      setSelectedProductIds([]);
-      setNotice({
-        type: "success",
-        message: `${result.data.productName}: se movieron ${result.data.movedVariants} variantes y se archivaron ${result.data.archivedProducts} duplicados.`,
-      });
-      await loadProducts();
-    } catch (error) {
-      setNotice({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "No se pudieron combinar los productos.",
-      });
-    } finally {
-      setMerging(false);
-    }
-  }
-
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPage(1);
@@ -779,20 +711,7 @@ try {
         <section className="product-list-panel">
           <div className="product-list-heading">
             <div><strong>{pagination.total.toLocaleString("es-MX")} productos</strong><span>Página {pagination.page} de {pagination.totalPages}</span></div>
-            {user.role === "ADMIN" ? (
-              <div className="product-merge-actions">
-                <span>{selectedProductIds.length} seleccionados</span>
-                <button
-                  disabled={selectedProductIds.length < 2 || merging}
-                  onClick={() => void mergeSelectedProducts()}
-                  type="button"
-                >
-                  {merging ? "Combinando…" : "Combinar productos"}
-                </button>
-              </div>
-            ) : (
-              <span>El Excel actualizará precios por SKU sin duplicar registros.</span>
-            )}
+            <span>Cada SKU del Excel se administra como producto independiente.</span>
           </div>
 
           <div className="product-admin-table-wrap">
@@ -803,9 +722,9 @@ try {
             {loading ? (
               <div className="product-admin-loading">Cargando productos…</div>
             ) : products.length ? products.map((product) => {
-              const variant = product.variants[0];
               const image = product.images[0];
               const activeVariants = product.variants.filter((item) => item.active);
+              const variant = activeVariants[0] ?? product.variants[0];
               const pricedVariants = activeVariants.length
                 ? activeVariants
                 : product.variants;
@@ -821,19 +740,10 @@ try {
               return (
                 <article className="product-admin-table product-admin-row" key={product.id}>
                   <div className="product-admin-identity">
-                    {user.role === "ADMIN" ? (
-                      <input
-                        aria-label={`Seleccionar ${product.name}`}
-                        checked={selectedProductIds.includes(product.id)}
-                        className="product-merge-check"
-                        onChange={() => toggleProductSelection(product.id)}
-                        type="checkbox"
-                      />
-                    ) : null}
                     <div className="product-admin-thumb">{image ? <img alt={image.alt || product.name} src={image.url} /> : <span>{product.name.slice(0, 2).toUpperCase()}</span>}</div>
-                    <span><strong>{product.name}</strong><small>{product.category.name}{product.variants.length > 1 ? ` · ${product.variants.length} variantes` : ""}{product.featured ? " · Destacado" : ""}</small></span>
+                    <span><strong>{product.name}</strong><small>{product.category.name}{activeVariants.length > 1 ? ` · ${activeVariants.length} variantes activas` : ""}{product.featured ? " · Destacado" : ""}</small></span>
                   </div>
-                  <span className="product-admin-sku">{product.variants.length > 1 ? `${product.variants.length} SKU` : variant?.sku || "Sin SKU"}</span>
+                  <span className="product-admin-sku">{activeVariants.length > 1 ? `${activeVariants.length} SKU` : variant?.sku || "Sin SKU"}</span>
                   <div className="product-admin-price"><strong>{money.format(price)}</strong>{hasOffer ? <><del>{money.format(compareAtPrice)}</del><small>OFERTA</small></> : null}</div>
                   <span className={totalStock > 0 ? "product-stock-pill" : "product-stock-pill empty"}>{totalStock} pzas.</span>
                   <span className={`product-status-badge ${product.status.toLowerCase()}`}>{STATUS_LABELS[product.status]}</span>

@@ -523,28 +523,18 @@ function parseWebExport(sourceRows: unknown[][]): ParsedRows {
     });
   }
 
-  const identityBySourceRow = new Map<number, ProductIdentity | null>();
-
-  for (const row of baseRows) {
-    const identity = deriveVariantCandidate(row.name, row.category);
-    identityBySourceRow.set(row.sourceRow, identity);
-  }
-
   const candidates = baseRows.map<MicrosipPriceRow>((row) => {
-    const identity = identityBySourceRow.get(row.sourceRow) ?? null;
-    // La identidad no depende de que el Excel actual tenga dos sabores.
-    // Así, una familia no vuelve a separarse cuando temporalmente queda
-    // una sola variante con existencia.
-    const useVariantFamily = Boolean(identity);
+    const identity = deriveVariantCandidate(row.name, row.category);
 
     return {
       ...row,
-      productKey: useVariantFamily
-        ? identity!.productKey
-        : normalizeProductKey(row.name),
-      productName: useVariantFamily ? identity!.productName : row.name,
-      flavor: useVariantFamily ? identity!.flavor : null,
-      presentation: useVariantFamily ? identity!.presentation : null,
+      // Cada SKU del ExportacionWeb representa un producto independiente.
+      // El sabor se conserva como dato informativo, pero nunca se utiliza
+      // para agrupar varias filas dentro del mismo producto.
+      productKey: row.key,
+      productName: row.name,
+      flavor: identity?.flavor ?? null,
+      presentation: identity?.presentation ?? findPresentation(row.name),
     };
   });
 
@@ -652,12 +642,13 @@ function parseLegacyPriceList(sourceRows: unknown[][]): ParsedRows {
     }
 
     const identity = resolveProductIdentity(name);
+    const sourceKey = buildProductSourceKey(null, name);
 
     candidates.push({
       sourceRow: index + 1,
-      key: buildProductSourceKey(null, name),
-      productKey: identity.productKey,
-      productName: identity.productName,
+      key: sourceKey,
+      productKey: sourceKey,
+      productName: name,
       flavor: identity.flavor,
       presentation: identity.presentation,
       sku: null,
@@ -714,7 +705,9 @@ export async function parseMicrosipPriceList(file: File) {
   const duplicateRows: DuplicateExcelRow[] = [];
 
   for (const product of parsed.candidates) {
-    const duplicateKey = normalizeProductKey(product.name);
+    // Dos filas con el mismo nombre pero SKU distinto son productos distintos.
+    // Solamente omitimos una fila cuando repite exactamente su clave de origen.
+    const duplicateKey = product.key;
     const previous = productsByKey.get(duplicateKey);
 
     if (previous) {

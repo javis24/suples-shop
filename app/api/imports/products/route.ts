@@ -107,8 +107,8 @@ export async function POST(request: Request) {
         const productKeys = [...rowsByProductKey.keys()];
 
         /*
-         * sourceKey identifica una variante concreta. importKey identifica al
-         * producto padre que puede contener varios sabores o presentaciones.
+         * Tanto sourceKey como importKey identifican una fila concreta del
+         * ExportacionWeb. Cada SKU se administra como producto independiente.
          */
         const existingVariants = await tx.productVariant.findMany({
           where: {
@@ -213,14 +213,7 @@ export async function POST(request: Request) {
         const inventoryMovements: Prisma.InventoryMovementCreateManyInput[] =
           [];
         const priceHistory: Prisma.PriceHistoryCreateManyInput[] = [];
-        const movedProducts = new Map<
-          number,
-          {
-            targetProductId: number;
-            movedVariantIds: Set<number>;
-            totalVariants: number;
-          }
-        >();
+        const movedProducts = new Map<number, Set<number>>();
 
         let createdRows = 0;
         let updatedRows = 0;
@@ -269,10 +262,7 @@ export async function POST(request: Request) {
           ]
             .filter((product) => {
               const claimedKey = claimedProductIds.get(product.id);
-              return (
-                (!claimedKey || claimedKey === productKey) &&
-                (!product.importKey || product.importKey === productKey)
-              );
+              return !claimedKey || claimedKey === productKey;
             })
             .sort((first, second) => {
               const scoreDifference =
@@ -291,11 +281,22 @@ export async function POST(request: Request) {
             parentProductId = existingParent.id;
             claimedProductIds.set(existingParent.id, productKey);
 
-            const excelNames = new Set(
-              groupRows.map((row) => normalizeProductKey(row.name)),
+            const matchedVariant = matchedVariants.find(
+              (variant) => variant.productId === existingParent.id,
             );
-            const nameWasImported = excelNames.has(
-              normalizeProductKey(existingParent.name),
+            const previousImportedName = matchedVariant?.microsipName;
+            const legacyImportedName = Boolean(
+              existingParent.importKey &&
+                existingParent.importKey !== productKey &&
+                normalizeProductKey(existingParent.name) ===
+                  existingParent.importKey,
+            );
+            const nameWasImported = Boolean(
+              existingParent._count.variants > 1 ||
+                legacyImportedName ||
+                (previousImportedName &&
+                  normalizeProductKey(existingParent.name) ===
+                    normalizeProductKey(previousImportedName)),
             );
 
             await tx.product.update({
@@ -303,6 +304,8 @@ export async function POST(request: Request) {
               data: {
                 importKey: productKey,
                 // Un nombre personalizado desde el panel nunca se sobrescribe.
+                // Los productos que antes estaban agrupados sí recuperan el
+                // nombre completo de la fila, incluido su sabor.
                 name: nameWasImported ? productName : undefined,
               },
             });
@@ -362,23 +365,15 @@ export async function POST(request: Request) {
               }
 
               if (changedParent) {
-                const moved = movedProducts.get(existing.productId);
+                await tx.productImage.updateMany({
+                  where: { variantId: existing.id },
+                  data: { productId: parentProductId },
+                });
 
-                if (moved && moved.targetProductId !== parentProductId) {
-                  throw new ApiError(
-                    409,
-                    `El producto ${existing.product.name} coincide con dos grupos diferentes`,
-                  );
-                }
-
-                const movement = moved ?? {
-                  targetProductId: parentProductId,
-                  movedVariantIds: new Set<number>(),
-                  totalVariants: existing.product._count.variants,
-                };
-
-                movement.movedVariantIds.add(existing.id);
-                movedProducts.set(existing.productId, movement);
+                const targets =
+                  movedProducts.get(existing.productId) ?? new Set<number>();
+                targets.add(parentProductId);
+                movedProducts.set(existing.productId, targets);
               }
 
               if (previousPrice !== row.price) {
@@ -404,7 +399,7 @@ export async function POST(request: Request) {
                 stock: row.stock,
                 price: row.price,
                 message: changedParent
-                  ? "Se agrupó como variante del producto principal"
+                  ? "Se separó como producto independiente"
                   : previousPrice !== row.price && previousStock !== row.stock
                     ? "Se actualizaron precio y existencia"
                     : previousPrice !== row.price
@@ -459,7 +454,7 @@ export async function POST(request: Request) {
                 quantity: row.stock,
                 previousStock: 0,
                 newStock: row.stock,
-                reason: "Nueva variante agregada desde ExportacionWeb",
+                reason: "Nuevo producto agregado desde ExportacionWeb",
                 importBatchId: batch.id,
                 userId: user.id,
               });
@@ -474,9 +469,7 @@ export async function POST(request: Request) {
               productName: row.name,
               stock: row.stock,
               price: row.price,
-              message: row.flavor
-                ? `Se creó la variante ${row.flavor}`
-                : "Se creó el producto y su variante principal",
+              message: "Se creó el producto independiente",
               sourceData: json({
                 key: row.key,
                 productKey: row.productKey,
@@ -537,17 +530,25 @@ export async function POST(request: Request) {
         }
 
         /*
-         * Si todas las variantes de un producto anterior se movieron al
-         * producto padre, trasladamos sus imágenes y lo archivamos. Nunca se
-         * elimina físicamente, por lo que el historial permanece intacto.
+         * Si un producto agrupado queda sin variantes, conservamos sus datos
+         * históricos, movemos sus imágenes generales a uno de los productos
+         * separados y finalmente lo archivamos.
          */
-        for (const [oldProductId, moved] of movedProducts) {
-          if (moved.movedVariantIds.size !== moved.totalVariants) continue;
+        for (const [oldProductId, targetProductIds] of movedProducts) {
+          const remainingVariants = await tx.productVariant.count({
+            where: { productId: oldProductId },
+          });
+
+          if (remainingVariants > 0) continue;
+
+          const targetProductId = targetProductIds.values().next().value;
+
+          if (!targetProductId) continue;
 
           await tx.productImage.updateMany({
-            where: { productId: oldProductId },
+            where: { productId: oldProductId, variantId: null },
             data: {
-              productId: moved.targetProductId,
+              productId: targetProductId,
               primary: false,
             },
           });
@@ -607,13 +608,6 @@ export async function POST(request: Request) {
 
         const skippedRows =
           parsed.skippedRows.length + parsed.duplicateRows.length;
-        const groupedProducts = [...rowsByProductKey.values()].filter(
-          (rows) => rows.length > 1,
-        ).length;
-        const groupedVariants = [...rowsByProductKey.values()]
-          .filter((rows) => rows.length > 1)
-          .reduce((total, rows) => total + rows.length, 0);
-
         await tx.importBatch.update({
           where: { id: batch.id },
           data: {
@@ -634,8 +628,8 @@ export async function POST(request: Request) {
           unchangedPriceRows,
           skippedRows,
           duplicateRows: parsed.duplicateRows.length,
-          groupedProducts,
-          groupedVariants,
+          groupedProducts: 0,
+          groupedVariants: 0,
           archivedDuplicateProducts,
           deactivatedVariants,
           errorRows: 0,
