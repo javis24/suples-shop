@@ -47,6 +47,8 @@ type CreatedOrder = {
   paymentMethod: PaymentMethod;
   checkoutUrl: string | null;
   paymentError: string | null;
+  whatsappUrl: string;
+  whatsappMessage: string;
   items: Array<{
     id: number;
     productName: string;
@@ -77,34 +79,6 @@ const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
   currency: "MXN",
 });
-
-function paymentLabel(value: PaymentMethod) {
-  if (value === "ONLINE") return "Pago en línea con Mercado Pago";
-  if (value === "TRANSFER") return "Transferencia bancaria";
-  return "Efectivo";
-}
-
-function addressLine(address: Record<string, unknown>) {
-  const street = String(address.street ?? "").trim();
-  const exteriorNo = String(address.exteriorNo ?? "").trim();
-  const interiorNo = String(address.interiorNo ?? "").trim();
-  const neighborhood = String(address.neighborhood ?? "").trim();
-  const city = String(address.city ?? "").trim();
-  const state = String(address.state ?? "").trim();
-  const postalCode = String(address.postalCode ?? "").trim();
-
-  return [
-    [street, exteriorNo ? `#${exteriorNo}` : "", interiorNo ? `Int. ${interiorNo}` : ""]
-      .filter(Boolean)
-      .join(" "),
-    neighborhood ? `Col. ${neighborhood}` : "",
-    city,
-    state,
-    postalCode ? `C.P. ${postalCode}` : "",
-  ]
-    .filter(Boolean)
-    .join(", ");
-}
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
@@ -271,7 +245,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       setItems([]);
       setStep("done");
 
-      const url = whatsappUrl(createdOrder);
+      const url = createdOrder.whatsappUrl;
       if (url && whatsappWindow && !whatsappWindow.closed) {
         whatsappWindow.opener = null;
         whatsappWindow.location.href = url;
@@ -644,7 +618,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
                 {config.whatsappNumber ? (
                   <a
                     className="whatsapp-button"
-                    href={whatsappUrl(completedOrder)}
+                    href={completedOrder.whatsappUrl}
                     rel="noreferrer"
                     target="_blank"
                   >
