@@ -243,7 +243,7 @@ export async function POST(request: Request) {
           orderId: order.id,
           destination: whatsapp.destination,
           message: whatsapp.message,
-          action: "CHECKOUT_OPENED",
+          action: "CHECKOUT_PREPARED",
         },
       });
     }
