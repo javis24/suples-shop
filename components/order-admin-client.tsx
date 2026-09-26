@@ -458,7 +458,7 @@ export function OrderAdminClient() {
                   <div className="whatsapp-log-list">
                     {selected.whatsappLogs.length ? selected.whatsappLogs.map((log) => (
                       <details key={log.id}>
-                        <summary><strong>{log.action === "CHECKOUT_OPENED" ? "Checkout" : "Administrador"}</strong><span>{dateTime.format(new Date(log.createdAt))}</span></summary>
+                        <summary><strong>{log.action.startsWith("CHECKOUT") ? "Checkout" : "Administrador"}</strong><span>{dateTime.format(new Date(log.createdAt))}</span></summary>
                         <div><small>Destino: {log.destination}{log.user ? ` · ${log.user.name}` : ""}</small><pre>{log.message}</pre></div>
                       </details>
                     )) : <p>Aún no hay registros de WhatsApp.</p>}
