@@ -157,6 +157,8 @@ export function OrderAdminClient() {
   }, [router]);
 
   useEffect(() => {
+    // La consulta se repite únicamente cuando cambian los filtros o la página.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadOrders();
   }, [loadOrders]);
 
