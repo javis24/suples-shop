@@ -32,7 +32,7 @@ export async function POST(_request: Request, context: Context) {
         orderId: order.id,
         destination: whatsapp.destination,
         message: whatsapp.message,
-        action: "ADMIN_OPENED",
+        action: "ADMIN_PREPARED",
         userId: user.id,
       },
       include: { user: { select: { id: true, name: true } } },
