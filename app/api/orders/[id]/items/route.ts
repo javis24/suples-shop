@@ -86,10 +86,24 @@ export async function PUT(request: Request, context: Context) {
 
         const before = await tx.productVariant.findUnique({ where: { id: variantId } });
         if (!before) continue;
-        const after = await tx.productVariant.update({
-          where: { id: variantId },
-          data: { stock: { increment: stockDelta } },
-        });
+
+        if (stockDelta < 0) {
+          const needed = Math.abs(stockDelta);
+          const changed = await tx.productVariant.updateMany({
+            where: { id: variantId, stock: { gte: needed } },
+            data: { stock: { decrement: needed } },
+          });
+          if (changed.count !== 1) {
+            throw new ApiError(409, "La existencia cambió mientras editabas el pedido; vuelve a intentarlo");
+          }
+        } else {
+          await tx.productVariant.update({
+            where: { id: variantId },
+            data: { stock: { increment: stockDelta } },
+          });
+        }
+
+        const after = await tx.productVariant.findUniqueOrThrow({ where: { id: variantId } });
         await tx.inventoryMovement.create({
           data: {
             variantId,
