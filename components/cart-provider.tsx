@@ -269,51 +269,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function whatsappUrl(order: CreatedOrder) {
-    if (!config.whatsappNumber) return "";
-    const lines = order.items.map(
-      (item) =>
-        `• ${item.quantity} × ${item.productName}${item.variantName ? ` (${item.variantName})` : ""}\n  ${money.format(Number(item.unitPrice))} c/u — ${money.format(Number(item.lineTotal))}`,
-    );
-    const references = String(order.shippingAddress.references ?? "").trim();
-    const transfer =
-      order.paymentMethod === "TRANSFER" && config.bank.clabe
-        ? [
-            "",
-            `Banco: ${config.bank.name || "Por confirmar"}`,
-            `Titular: ${config.bank.holder || "Por confirmar"}`,
-            `CLABE: ${config.bank.clabe}`,
-          ]
-        : [];
-    const onlinePayment =
-      order.paymentMethod === "ONLINE" && order.checkoutUrl
-        ? ["", `Liga para pagar: ${order.checkoutUrl}`]
-        : [];
-    const message = [
-      "Hola Suples Shop, quiero realizar el siguiente pedido:",
-      `*Pedido ${order.orderNumber}*`,
-      "",
-      "*DATOS DEL CLIENTE*",
-      `Nombre: ${order.customerName}`,
-      `WhatsApp: ${order.customerPhone || "No proporcionado"}`,
-      ...(order.customerEmail ? [`Correo: ${order.customerEmail}`] : []),
-      "",
-      "*PRODUCTOS*",
-      ...lines,
-      "",
-      `*TOTAL: ${money.format(Number(order.total))}*`,
-      `*FORMA DE PAGO: ${paymentLabel(order.paymentMethod)}*`,
-      "",
-      "*DATOS DE ENTREGA*",
-      addressLine(order.shippingAddress),
-      ...(references ? [`Referencias: ${references}`] : []),
-      ...(order.notes ? ["", `Notas: ${order.notes}`] : []),
-      ...transfer,
-      ...onlinePayment,
-    ].join("\n");
-    return `https://wa.me/${config.whatsappNumber}?text=${encodeURIComponent(message)}`;
-  }
-
   const context = useMemo<CartContextValue>(
     () => ({ items, itemCount, addItem, openCart }),
     [addItem, itemCount, items, openCart],
