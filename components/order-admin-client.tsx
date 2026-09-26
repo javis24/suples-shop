@@ -156,11 +156,12 @@ export function OrderAdminClient() {
       .catch(() => router.replace("/dashboard"));
   }, [router]);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     // La consulta se repite únicamente cuando cambian los filtros o la página.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadOrders();
   }, [loadOrders]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function openOrder(id: number) {
     setBusy(true);
