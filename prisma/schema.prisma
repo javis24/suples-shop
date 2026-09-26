@@ -80,6 +80,7 @@ model User {
   priceChanges       PriceHistory[]
   importBatches      ImportBatch[]
   orderStatusChanges OrderStatusHistory[]
+  whatsappLogs       OrderWhatsAppLog[]
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
@@ -335,6 +336,7 @@ model Order {
   items               OrderItem[]
   statusHistory       OrderStatusHistory[]
   inventoryMovements  InventoryMovement[]
+  whatsappLogs        OrderWhatsAppLog[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -372,6 +374,21 @@ model OrderStatusHistory {
   order     Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
   user      User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   createdAt DateTime     @default(now())
+
+  @@index([orderId, createdAt])
+  @@index([userId])
+}
+
+model OrderWhatsAppLog {
+  id          Int      @id @default(autoincrement())
+  orderId     Int
+  destination String   @db.VarChar(30)
+  message     String   @db.Text
+  action      String   @default("GENERATED") @db.VarChar(30)
+  userId      Int?
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
 
   @@index([orderId, createdAt])
   @@index([userId])
