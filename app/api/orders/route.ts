@@ -25,8 +25,16 @@ export async function GET(request: NextRequest) {
       | "CANCELED"
       | null;
 
+    const paymentStatus = params.get("paymentStatus") as
+      | "PENDING"
+      | "PAID"
+      | "FAILED"
+      | "REFUNDED"
+      | null;
+
     const where = {
       status: status || undefined,
+      paymentStatus: paymentStatus || undefined,
       OR: q
         ? [
             { orderNumber: { contains: q } },
