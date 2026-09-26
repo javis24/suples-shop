@@ -19,7 +19,7 @@ type DashboardData = {
     lowStockCount: number;
   };
   lowStock: { id: number; sku: string; stock: number; lowStockAt: number; product: { name: string } }[];
-  recentOrders: { id: number; number: string; customerName: string; total: string | number; status: string; createdAt: string }[];
+  recentOrders: { id: number; orderNumber: string; customerName: string; total: string | number; status: string; createdAt: string }[];
   recentImports: { id: number; fileName: string; status: string; totalRows: number; createdRows: number; updatedRows: number; errorRows: number; startedAt: string }[];
 };
 
@@ -177,7 +177,7 @@ export function DashboardClient() {
         <section className="admin-grid lower-grid">
           <article className="panel" id="pedidos">
             <div className="panel-heading"><div><span className="eyebrow dark">VENTAS</span><h2>Pedidos recientes</h2></div></div>
-            <div className="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Estado</th><th>Total</th></tr></thead><tbody>{dashboard.recentOrders.length ? dashboard.recentOrders.map((order) => <tr key={order.id}><td>{order.number}</td><td>{order.customerName}</td><td><span className="table-status">{order.status}</span></td><td>{money.format(Number(order.total))}</td></tr>) : <tr><td colSpan={4}>Aún no hay pedidos.</td></tr>}</tbody></table></div>
+            <div className="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Estado</th><th>Total</th></tr></thead><tbody>{dashboard.recentOrders.length ? dashboard.recentOrders.map((order) => <tr key={order.id}><td>{order.orderNumber}</td><td>{order.customerName}</td><td><span className="table-status">{order.status}</span></td><td>{money.format(Number(order.total))}</td></tr>) : <tr><td colSpan={4}>Aún no hay pedidos.</td></tr>}</tbody></table></div>
           </article>
           <article className="panel">
             <div className="panel-heading"><div><span className="eyebrow dark">HISTORIAL</span><h2>Últimas importaciones</h2></div></div>

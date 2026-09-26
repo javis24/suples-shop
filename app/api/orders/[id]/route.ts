@@ -22,6 +22,10 @@ export async function GET(_request: Request, context: Context) {
         customer: true,
         coupon: true,
         statusHistory: { include: { user: { select: { id: true, name: true } } }, orderBy: { createdAt: "asc" } },
+        whatsappLogs: {
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { createdAt: "desc" },
+        },
       },
     });
     if (!order) throw new ApiError(404, "Pedido no encontrado");
@@ -90,7 +94,16 @@ export async function PATCH(request: Request, context: Context) {
       return tx.order.update({
         where: { id },
         data: { status: data.status, paymentStatus: data.paymentStatus },
-        include: { items: true, customer: true, coupon: true, statusHistory: true },
+        include: {
+          items: true,
+          customer: true,
+          coupon: true,
+          statusHistory: { include: { user: { select: { id: true, name: true } } } },
+          whatsappLogs: {
+            include: { user: { select: { id: true, name: true } } },
+            orderBy: { createdAt: "desc" },
+          },
+        },
       });
     });
 

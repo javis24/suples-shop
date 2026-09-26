@@ -47,6 +47,8 @@ type CreatedOrder = {
   paymentMethod: PaymentMethod;
   checkoutUrl: string | null;
   paymentError: string | null;
+  whatsappUrl: string;
+  whatsappMessage: string;
   items: Array<{
     id: number;
     productName: string;
@@ -77,34 +79,6 @@ const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
   currency: "MXN",
 });
-
-function paymentLabel(value: PaymentMethod) {
-  if (value === "ONLINE") return "Pago en línea con Mercado Pago";
-  if (value === "TRANSFER") return "Transferencia bancaria";
-  return "Efectivo";
-}
-
-function addressLine(address: Record<string, unknown>) {
-  const street = String(address.street ?? "").trim();
-  const exteriorNo = String(address.exteriorNo ?? "").trim();
-  const interiorNo = String(address.interiorNo ?? "").trim();
-  const neighborhood = String(address.neighborhood ?? "").trim();
-  const city = String(address.city ?? "").trim();
-  const state = String(address.state ?? "").trim();
-  const postalCode = String(address.postalCode ?? "").trim();
-
-  return [
-    [street, exteriorNo ? `#${exteriorNo}` : "", interiorNo ? `Int. ${interiorNo}` : ""]
-      .filter(Boolean)
-      .join(" "),
-    neighborhood ? `Col. ${neighborhood}` : "",
-    city,
-    state,
-    postalCode ? `C.P. ${postalCode}` : "",
-  ]
-    .filter(Boolean)
-    .join(", ");
-}
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
@@ -271,7 +245,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       setItems([]);
       setStep("done");
 
-      const url = whatsappUrl(createdOrder);
+      const url = createdOrder.whatsappUrl;
       if (url && whatsappWindow && !whatsappWindow.closed) {
         whatsappWindow.opener = null;
         whatsappWindow.location.href = url;
@@ -293,51 +267,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     } finally {
       setSubmitting(false);
     }
-  }
-
-  function whatsappUrl(order: CreatedOrder) {
-    if (!config.whatsappNumber) return "";
-    const lines = order.items.map(
-      (item) =>
-        `• ${item.quantity} × ${item.productName}${item.variantName ? ` (${item.variantName})` : ""}\n  ${money.format(Number(item.unitPrice))} c/u — ${money.format(Number(item.lineTotal))}`,
-    );
-    const references = String(order.shippingAddress.references ?? "").trim();
-    const transfer =
-      order.paymentMethod === "TRANSFER" && config.bank.clabe
-        ? [
-            "",
-            `Banco: ${config.bank.name || "Por confirmar"}`,
-            `Titular: ${config.bank.holder || "Por confirmar"}`,
-            `CLABE: ${config.bank.clabe}`,
-          ]
-        : [];
-    const onlinePayment =
-      order.paymentMethod === "ONLINE" && order.checkoutUrl
-        ? ["", `Liga para pagar: ${order.checkoutUrl}`]
-        : [];
-    const message = [
-      "Hola Suples Shop, quiero realizar el siguiente pedido:",
-      `*Pedido ${order.orderNumber}*`,
-      "",
-      "*DATOS DEL CLIENTE*",
-      `Nombre: ${order.customerName}`,
-      `WhatsApp: ${order.customerPhone || "No proporcionado"}`,
-      ...(order.customerEmail ? [`Correo: ${order.customerEmail}`] : []),
-      "",
-      "*PRODUCTOS*",
-      ...lines,
-      "",
-      `*TOTAL: ${money.format(Number(order.total))}*`,
-      `*FORMA DE PAGO: ${paymentLabel(order.paymentMethod)}*`,
-      "",
-      "*DATOS DE ENTREGA*",
-      addressLine(order.shippingAddress),
-      ...(references ? [`Referencias: ${references}`] : []),
-      ...(order.notes ? ["", `Notas: ${order.notes}`] : []),
-      ...transfer,
-      ...onlinePayment,
-    ].join("\n");
-    return `https://wa.me/${config.whatsappNumber}?text=${encodeURIComponent(message)}`;
   }
 
   const context = useMemo<CartContextValue>(
@@ -644,7 +573,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
                 {config.whatsappNumber ? (
                   <a
                     className="whatsapp-button"
-                    href={whatsappUrl(completedOrder)}
+                    href={completedOrder.whatsappUrl}
                     rel="noreferrer"
                     target="_blank"
                   >

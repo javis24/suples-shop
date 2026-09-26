@@ -6,6 +6,7 @@ import { orderNumber } from "@/lib/slug";
 import { orderSchema } from "@/lib/validators";
 import { createMercadoPagoPreference } from "@/lib/mercado-pago";
 import { Prisma } from "@/app/generated/prisma/client";
+import { buildOrderWhatsApp, storeWhatsAppConfig } from "@/lib/order-whatsapp";
 
 export const runtime = "nodejs";
 
@@ -24,8 +25,16 @@ export async function GET(request: NextRequest) {
       | "CANCELED"
       | null;
 
+    const paymentStatus = params.get("paymentStatus") as
+      | "PENDING"
+      | "PAID"
+      | "FAILED"
+      | "REFUNDED"
+      | null;
+
     const where = {
       status: status || undefined,
+      paymentStatus: paymentStatus || undefined,
       OR: q
         ? [
             { orderNumber: { contains: q } },
@@ -223,7 +232,29 @@ export async function POST(request: Request) {
       }
     }
 
-    return created({ ...order, checkoutUrl, paymentError });
+    const whatsapp = buildOrderWhatsApp(order, {
+      ...storeWhatsAppConfig(),
+      checkoutUrl,
+    });
+
+    if (whatsapp.destination) {
+      await prisma.orderWhatsAppLog.create({
+        data: {
+          orderId: order.id,
+          destination: whatsapp.destination,
+          message: whatsapp.message,
+          action: "CHECKOUT_PREPARED",
+        },
+      });
+    }
+
+    return created({
+      ...order,
+      checkoutUrl,
+      paymentError,
+      whatsappUrl: whatsapp.url,
+      whatsappMessage: whatsapp.message,
+    });
   } catch (error) {
     return handleApiError(error);
   }

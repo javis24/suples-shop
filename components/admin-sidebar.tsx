@@ -6,7 +6,7 @@ export type AdminSidebarUser = {
 };
 
 type Props = {
-  active: "dashboard" | "products";
+  active: "dashboard" | "products" | "orders";
   user: AdminSidebarUser;
 };
 
@@ -34,7 +34,7 @@ export function AdminSidebar({ active, user }: Props) {
         <Link href="/dashboard#inventario">
           <span>▤</span> Inventario
         </Link>
-        <Link href="/dashboard#pedidos">
+        <Link className={active === "orders" ? "active" : ""} href="/dashboard/orders">
           <span>◉</span> Pedidos
         </Link>
       </nav>
