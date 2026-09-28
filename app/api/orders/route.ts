@@ -4,7 +4,6 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { orderNumber } from "@/lib/slug";
 import { orderSchema } from "@/lib/validators";
-import { createMercadoPagoPreference } from "@/lib/mercado-pago";
 import { Prisma } from "@/app/generated/prisma/client";
 import { buildOrderWhatsApp, storeWhatsAppConfig } from "@/lib/order-whatsapp";
 
@@ -147,8 +146,9 @@ export async function POST(request: Request) {
             orderNumber: orderNumber(),
             customerId,
             couponId: coupon?.id ?? null,
-            paymentMethod: data.paymentMethod,
-            paymentProvider: data.paymentMethod === "ONLINE" ? "MERCADO_PAGO" : null,
+            paymentMethod: "CASH",
+            paymentStatus: "PENDING",
+            paymentProvider: null,
             subtotal,
             discount,
             shipping,
@@ -211,26 +211,8 @@ export async function POST(request: Request) {
       { maxWait: 20_000, timeout: 30_000 },
     );
 
-    let checkoutUrl: string | null = null;
-    let paymentError: string | null = null;
-
-    if (data.paymentMethod === "ONLINE") {
-      try {
-        const payment = await createMercadoPagoPreference(
-          order,
-          new URL(request.url).origin,
-        );
-        checkoutUrl = payment.checkoutUrl;
-        await prisma.order.update({
-          where: { id: order.id },
-          data: { paymentPreferenceId: payment.preferenceId },
-        });
-      } catch (error) {
-        console.error("No fue posible crear la preferencia de Mercado Pago", error);
-        paymentError =
-          "El pedido se guardó, pero no fue posible abrir el pago en línea. Puedes enviarlo por WhatsApp para recibir ayuda.";
-      }
-    }
+    const checkoutUrl: string | null = null;
+    const paymentError: string | null = null;
 
     const whatsapp = buildOrderWhatsApp(order, {
       ...storeWhatsAppConfig(),
