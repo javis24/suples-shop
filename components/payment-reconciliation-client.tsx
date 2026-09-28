@@ -116,16 +116,12 @@ export function PaymentReconciliationClient() {
       setOrders(result.data);
       if (result.meta) setPagination(result.meta);
 
-      if (selected) {
-        const refreshed = result.data.find((order) => order.id === selected.id);
-        if (refreshed) setSelected(refreshed);
-      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "No se pudieron cargar los pagos.");
     } finally {
       setLoading(false);
     }
-  }, [appliedQuery, page, paymentStatus, selected, user]);
+  }, [appliedQuery, page, paymentStatus, user]);
 
   useEffect(() => {
     request<AdminSidebarUser>("/api/auth/me")
