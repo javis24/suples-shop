@@ -25,7 +25,7 @@ export async function PUT(request: Request, context: Context) {
     const order = await prisma.$transaction(async (tx) => {
       const existing = await tx.order.findUnique({
         where: { id },
-        include: { items: true, coupon: true },
+        include: { items: true, coupon: true, payments: { where: { voidedAt: null } } },
       });
       if (!existing) throw new ApiError(404, "Pedido no encontrado");
       if (
@@ -156,6 +156,17 @@ export async function PUT(request: Request, context: Context) {
         0,
         Math.round((subtotal - discount + Number(existing.shipping)) * 100) / 100,
       );
+      const paidAmount =
+        Math.round(
+          existing.payments.reduce((sum, payment) => sum + Number(payment.amount), 0) * 100,
+        ) / 100;
+      if (paidAmount > total + 0.001) {
+        throw new ApiError(
+          409,
+          "El nuevo total no puede ser menor que lo ya cobrado. Anula o ajusta primero los pagos conciliados.",
+        );
+      }
+      const paymentStatus = paidAmount + 0.001 >= total ? "PAID" : "PENDING";
 
       await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
       await tx.orderItem.createMany({
@@ -164,7 +175,7 @@ export async function PUT(request: Request, context: Context) {
 
       return tx.order.update({
         where: { id: existing.id },
-        data: { subtotal, discount, total },
+        data: { subtotal, discount, total, paymentStatus },
         include: {
           items: true,
           customer: true,
