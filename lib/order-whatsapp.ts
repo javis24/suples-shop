@@ -4,7 +4,6 @@ type OrderForWhatsApp = {
   customerEmail: string | null;
   customerPhone: string | null;
   notes: string | null;
-  paymentMethod: "CASH" | "TRANSFER" | "ONLINE";
   total: unknown;
   shippingAddress: unknown;
   items: Array<{
@@ -18,20 +17,12 @@ type OrderForWhatsApp = {
 
 type StoreWhatsAppConfig = {
   businessPhone: string;
-  bank?: { name?: string; holder?: string; clabe?: string };
-  checkoutUrl?: string | null;
 };
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
   currency: "MXN",
 });
-
-function paymentLabel(value: OrderForWhatsApp["paymentMethod"]) {
-  if (value === "ONLINE") return "Pago en línea con Mercado Pago";
-  if (value === "TRANSFER") return "Transferencia bancaria";
-  return "Efectivo";
-}
 
 function addressLine(address: unknown) {
   const value =
@@ -71,21 +62,6 @@ export function buildOrderWhatsApp(order: OrderForWhatsApp, config: StoreWhatsAp
       ? (order.shippingAddress as Record<string, unknown>)
       : {};
   const references = String(address.references ?? "").trim();
-  const bank = config.bank ?? {};
-  const transfer =
-    order.paymentMethod === "TRANSFER" && bank.clabe
-      ? [
-          "",
-          `Banco: ${bank.name || "Por confirmar"}`,
-          `Titular: ${bank.holder || "Por confirmar"}`,
-          `CLABE: ${bank.clabe}`,
-        ]
-      : [];
-  const onlinePayment =
-    order.paymentMethod === "ONLINE" && config.checkoutUrl
-      ? ["", `Liga para pagar: ${config.checkoutUrl}`]
-      : [];
-
   const message = [
     "Hola Suples Shop, quiero realizar el siguiente pedido:",
     `*Pedido ${order.orderNumber}*`,
@@ -99,14 +75,10 @@ export function buildOrderWhatsApp(order: OrderForWhatsApp, config: StoreWhatsAp
     ...lines,
     "",
     `*TOTAL: ${money.format(Number(order.total))}*`,
-    `*FORMA DE PAGO: ${paymentLabel(order.paymentMethod)}*`,
-    "",
     "*DATOS DE ENTREGA*",
     addressLine(order.shippingAddress),
     ...(references ? [`Referencias: ${references}`] : []),
     ...(order.notes ? ["", `Notas: ${order.notes}`] : []),
-    ...transfer,
-    ...onlinePayment,
   ].join("\n");
 
   return {
@@ -121,10 +93,5 @@ export function buildOrderWhatsApp(order: OrderForWhatsApp, config: StoreWhatsAp
 export function storeWhatsAppConfig() {
   return {
     businessPhone: (process.env.STORE_WHATSAPP_NUMBER ?? "").replace(/\D/g, ""),
-    bank: {
-      name: process.env.STORE_BANK_NAME ?? "",
-      holder: process.env.STORE_BANK_HOLDER ?? "",
-      clabe: (process.env.STORE_BANK_CLABE ?? "").replace(/\s/g, ""),
-    },
   };
 }

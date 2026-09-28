@@ -64,6 +64,12 @@ enum PaymentMethod {
   ONLINE
 }
 
+enum ReconciliationPaymentMethod {
+  CASH
+  TRANSFER
+  CARD
+}
+
 enum CouponType {
   PERCENTAGE
   FIXED
@@ -81,6 +87,8 @@ model User {
   importBatches      ImportBatch[]
   orderStatusChanges OrderStatusHistory[]
   whatsappLogs       OrderWhatsAppLog[]
+  paymentRecords      PaymentRecord[]      @relation("PaymentRecordCreatedBy")
+  paymentVoids        PaymentRecord[]      @relation("PaymentRecordVoidedBy")
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
@@ -337,6 +345,7 @@ model Order {
   statusHistory       OrderStatusHistory[]
   inventoryMovements  InventoryMovement[]
   whatsappLogs        OrderWhatsAppLog[]
+  payments            PaymentRecord[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -377,6 +386,30 @@ model OrderStatusHistory {
 
   @@index([orderId, createdAt])
   @@index([userId])
+}
+
+model PaymentRecord {
+  id          Int                         @id @default(autoincrement())
+  orderId     Int
+  amount      Decimal                     @db.Decimal(12, 2)
+  method      ReconciliationPaymentMethod
+  reference   String?                     @db.VarChar(120)
+  note        String?                     @db.VarChar(500)
+  receivedAt  DateTime                    @default(now())
+  createdById Int
+  voidedAt    DateTime?
+  voidReason  String?                     @db.VarChar(255)
+  voidedById  Int?
+  order       Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdBy   User                        @relation("PaymentRecordCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  voidedBy    User?                       @relation("PaymentRecordVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime                    @default(now())
+  updatedAt   DateTime                    @updatedAt
+
+  @@index([orderId, voidedAt, receivedAt])
+  @@index([method, receivedAt])
+  @@index([createdById])
+  @@index([voidedById])
 }
 
 model OrderWhatsAppLog {
