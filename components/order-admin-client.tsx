@@ -126,7 +126,6 @@ export function OrderAdminClient() {
   const [notice, setNotice] = useState("");
 
   const [draftStatus, setDraftStatus] = useState<OrderStatus>("PENDING");
-  const [draftPayment, setDraftPayment] = useState<PaymentStatus>("PENDING");
   const [statusNote, setStatusNote] = useState("");
   const [draftItems, setDraftItems] = useState<Array<{ variantId: number; quantity: number; label: string; price: number }>>([]);
   const [productQuery, setProductQuery] = useState("");
@@ -170,7 +169,6 @@ export function OrderAdminClient() {
       const result = await request<OrderDetail>(`/api/orders/${id}`);
       setSelected(result.data);
       setDraftStatus(result.data.status);
-      setDraftPayment(result.data.paymentStatus);
       setDraftItems(
         result.data.items
           .filter((item) => item.variantId)
@@ -200,7 +198,6 @@ export function OrderAdminClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: draftStatus,
-          paymentStatus: draftPayment,
           note: statusNote || null,
         }),
       });
@@ -394,11 +391,10 @@ export function OrderAdminClient() {
                 </div>
 
                 <section className="order-section">
-                  <h3>Estado y pago</h3>
+                  <h3>Estado del pedido</h3>
                   <form className="order-status-form" onSubmit={saveOrderStatus}>
                     <label>Estado<select value={draftStatus} onChange={(event) => setDraftStatus(event.target.value as OrderStatus)}>{Object.entries(orderLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                    <label>Pago<select value={draftPayment} onChange={(event) => setDraftPayment(event.target.value as PaymentStatus)}>{Object.entries(paymentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                    <label className="order-note-field">Nota<input value={statusNote} onChange={(event) => setStatusNote(event.target.value)} placeholder="Ej. Cliente confirmó por WhatsApp" /></label>
+                    <label>Nota<input value={statusNote} onChange={(event) => setStatusNote(event.target.value)} placeholder="Ej. Cliente confirmó por WhatsApp" /></label>
                     <button disabled={busy} type="submit">Guardar cambios</button>
                   </form>
                 </section>
