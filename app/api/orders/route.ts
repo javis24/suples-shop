@@ -214,10 +214,7 @@ export async function POST(request: Request) {
     const checkoutUrl: string | null = null;
     const paymentError: string | null = null;
 
-    const whatsapp = buildOrderWhatsApp(order, {
-      ...storeWhatsAppConfig(),
-      checkoutUrl,
-    });
+    const whatsapp = buildOrderWhatsApp(order, storeWhatsAppConfig());
 
     if (whatsapp.destination) {
       await prisma.orderWhatsAppLog.create({
