@@ -15,14 +15,7 @@ export async function POST(_request: Request, context: Context) {
     });
     if (!order) throw new ApiError(404, "Pedido no encontrado");
 
-    const checkoutUrl =
-      order.paymentMethod === "ONLINE" && order.paymentPreferenceId
-        ? null
-        : null;
-    const whatsapp = buildOrderWhatsApp(order, {
-      ...storeWhatsAppConfig(),
-      checkoutUrl,
-    });
+    const whatsapp = buildOrderWhatsApp(order, storeWhatsAppConfig());
     if (!whatsapp.destination) {
       throw new ApiError(409, "No está configurado STORE_WHATSAPP_NUMBER");
     }
