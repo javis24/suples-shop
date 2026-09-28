@@ -27,13 +27,10 @@ export type CartItemInput = {
 };
 
 type CartItem = CartItemInput & { quantity: number };
-type PaymentMethod = "CASH" | "TRANSFER" | "ONLINE";
 type CheckoutStep = "cart" | "checkout" | "done";
 
 type StoreConfig = {
   whatsappNumber: string;
-  onlinePaymentEnabled: boolean;
-  bank: { name: string; holder: string; clabe: string };
 };
 
 type CreatedOrder = {
@@ -44,9 +41,6 @@ type CreatedOrder = {
   customerEmail: string | null;
   customerPhone: string | null;
   notes: string | null;
-  paymentMethod: PaymentMethod;
-  checkoutUrl: string | null;
-  paymentError: string | null;
   whatsappUrl: string;
   whatsappMessage: string;
   items: Array<{
@@ -71,8 +65,6 @@ const CartContext = createContext<CartContextValue | null>(null);
 const CART_STORAGE_KEY = "suples-shop-cart-v1";
 const emptyConfig: StoreConfig = {
   whatsappNumber: "",
-  onlinePaymentEnabled: false,
-  bank: { name: "", holder: "", clabe: "" },
 };
 
 const money = new Intl.NumberFormat("es-MX", {
@@ -87,7 +79,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [step, setStep] = useState<CheckoutStep>("cart");
   const [toast, setToast] = useState("");
   const [config, setConfig] = useState<StoreConfig>(emptyConfig);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [completedOrder, setCompletedOrder] = useState<CreatedOrder | null>(null);
@@ -216,7 +207,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
           customerName: String(form.get("customerName") ?? ""),
           customerEmail: String(form.get("customerEmail") ?? "") || null,
           customerPhone: String(form.get("customerPhone") ?? ""),
-          paymentMethod,
           shipping: 0,
           shippingAddress: {
             street: String(form.get("street") ?? ""),
@@ -457,49 +447,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
                   </label>
                 </section>
 
-                <section>
-                  <h3>Forma de pago</h3>
-                  <label className="payment-option">
-                    <input
-                      checked={paymentMethod === "CASH"}
-                      name="paymentMethod"
-                      onChange={() => setPaymentMethod("CASH")}
-                      type="radio"
-                    />
-                    <span>
-                      <strong>Efectivo</strong>
-                      <small>Se confirma la entrega o recolección por WhatsApp.</small>
-                    </span>
-                  </label>
-                  <label className="payment-option">
-                    <input
-                      checked={paymentMethod === "TRANSFER"}
-                      name="paymentMethod"
-                      onChange={() => setPaymentMethod("TRANSFER")}
-                      type="radio"
-                    />
-                    <span>
-                      <strong>Transferencia bancaria</strong>
-                      <small>Te mostraremos la CLABE al registrar el pedido.</small>
-                    </span>
-                  </label>
-                  <label className="payment-option">
-                    <input
-                      checked={paymentMethod === "ONLINE"}
-                      disabled={!config.onlinePaymentEnabled}
-                      name="paymentMethod"
-                      onChange={() => setPaymentMethod("ONLINE")}
-                      type="radio"
-                    />
-                    <span>
-                      <strong>Pago en línea</strong>
-                      <small>
-                        {config.onlinePaymentEnabled
-                          ? "Checkout seguro de Mercado Pago."
-                          : "Disponible cuando configures Mercado Pago."}
-                      </small>
-                    </span>
-                  </label>
+                <section className="checkout-payment-note">
+                  <h3>Pago</h3>
+                  <p>La forma de pago se confirma directamente con Suples Shop por WhatsApp.</p>
                 </section>
 
                 <label>
@@ -549,26 +499,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
                   Guardamos el pedido por {money.format(Number(completedOrder.total))}.
                   Ahora elige la siguiente acción.
                 </p>
-
-                {completedOrder.paymentMethod === "TRANSFER" ? (
-                  <div className="bank-details">
-                    <strong>Datos para transferencia</strong>
-                    <span>Banco: {config.bank.name || "Confirma por WhatsApp"}</span>
-                    <span>Titular: {config.bank.holder || "Confirma por WhatsApp"}</span>
-                    <span>CLABE: {config.bank.clabe || "Confirma por WhatsApp"}</span>
-                  </div>
-                ) : null}
-
-                {completedOrder.paymentError ? (
-                  <p className="checkout-error">{completedOrder.paymentError}</p>
-                ) : null}
-
-                {completedOrder.paymentMethod === "ONLINE" &&
-                completedOrder.checkoutUrl ? (
-                  <a className="cart-primary cart-link-button" href={completedOrder.checkoutUrl}>
-                    Pagar con Mercado Pago
-                  </a>
-                ) : null}
 
                 {config.whatsappNumber ? (
                   <a
