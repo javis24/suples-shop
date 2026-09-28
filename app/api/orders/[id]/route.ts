@@ -7,7 +7,6 @@ type Context = { params: Promise<{ id: string }> };
 
 const schema = z.object({
   status: z.enum(["PENDING", "CONFIRMED", "PREPARING", "SHIPPED", "DELIVERED", "CANCELED"]).optional(),
-  paymentStatus: z.enum(["PENDING", "PAID", "FAILED", "REFUNDED"]).optional(),
   note: z.string().trim().max(255).optional().nullable(),
 });
 
@@ -93,7 +92,7 @@ export async function PATCH(request: Request, context: Context) {
 
       return tx.order.update({
         where: { id },
-        data: { status: data.status, paymentStatus: data.paymentStatus },
+        data: { status: data.status },
         include: {
           items: true,
           customer: true,
