@@ -231,10 +231,21 @@ export function Storefront() {
             <div className="shop-trust"><strong>Compra segura</strong><span>Stock actualizado desde el panel</span></div>
           </div>
 
-          <details className="shop-mobile-categories">
-            <summary>Filtrar por categoría <span>＋</span></summary>
-            <div><button className={!selectedCategory ? "active" : ""} onClick={() => chooseCategory("")} type="button">Todos</button>{categories.map((category) => <button className={selectedCategory === category.slug ? "active" : ""} key={category.id} onClick={() => chooseCategory(category.slug)} type="button">{category.name}</button>)}</div>
-          </details>
+          <nav className="shop-mobile-categories" aria-label="Categorías de productos">
+            <div className="shop-mobile-category-heading">
+              <h2>Categorías</h2>
+              <span>{selectedCategoryName || "Explora la tienda"}</span>
+            </div>
+            <div className="shop-mobile-category-grid">
+              <button aria-pressed={!selectedCategory} className={!selectedCategory ? "active" : ""} onClick={() => chooseCategory("")} type="button">Todos los productos</button>
+              {categories.map((category) => (
+                <button aria-pressed={selectedCategory === category.slug} className={selectedCategory === category.slug ? "active" : ""} key={category.id} onClick={() => chooseCategory(category.slug)} type="button">
+                  <span>{category.name}</span>
+                  <small>{category._count?.products ?? ""}</small>
+                </button>
+              ))}
+            </div>
+          </nav>
 
           <div className="shop-fast-filters">
             <strong>Filtros rápidos:</strong>

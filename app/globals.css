@@ -948,11 +948,16 @@ button { cursor: pointer; }
   .shop-category-bar { display: none; }
   .shop-main { display: block; padding-top: 18px; }
   .shop-sidebar { display: none; }
-  .shop-mobile-categories { display: block; margin: 0 0 10px; border: 1px solid var(--shop-border); }
-  .shop-mobile-categories summary { display: flex; justify-content: space-between; padding: 13px; font-size: 11px; font-weight: 800; cursor: pointer; list-style: none; }
-  .shop-mobile-categories > div { display: flex; gap: 7px; overflow-x: auto; padding: 0 12px 12px; }
-  .shop-mobile-categories button { flex: 0 0 auto; border: 1px solid #dbe0e6; border-radius: 99px; padding: 8px 11px; background: #fff; font-size: 9px; }
-  .shop-mobile-categories button.active { border-color: var(--shop-blue); color: #fff; background: var(--shop-blue); }
+  .shop-fast-filters { display: none; }
+  .shop-mobile-categories { display: block; margin-bottom: 16px; padding: 14px; border: 1px solid var(--shop-border); border-radius: 12px; background: #fff; }
+  .shop-mobile-category-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; margin-bottom: 12px; }
+  .shop-mobile-category-heading h2 { margin: 0; font-size: 16px; }
+  .shop-mobile-category-heading > span { color: #586174; font-size: 12px; overflow-wrap: anywhere; }
+  .shop-mobile-category-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 280px; overflow-y: auto; overscroll-behavior: contain; padding: 3px; }
+  .shop-mobile-category-grid button { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: 48px; border: 1px solid #dbe0e6; border-radius: 8px; padding: 10px 12px; background: #fff; text-align: left; font: inherit; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; cursor: pointer; }
+  .shop-mobile-category-grid button small { flex-shrink: 0; font-size: 11px; }
+  .shop-mobile-category-grid button.active { border-color: var(--shop-blue); color: #fff; background: var(--shop-blue); font-weight: 700; }
+  .shop-mobile-category-grid button:focus-visible { outline: 2px solid var(--shop-blue); outline-offset: 2px; }
   .shop-catalog-intro { min-height: 112px; }
 }
 
