@@ -20,3 +20,4 @@ ALTER TABLE `OrderWhatsAppLog`
 ALTER TABLE `OrderWhatsAppLog`
   ADD CONSTRAINT `OrderWhatsAppLog_userId_fkey`
   FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
