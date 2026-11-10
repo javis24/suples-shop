@@ -62,6 +62,7 @@ enum PaymentMethod {
   CASH
   TRANSFER
   ONLINE
+  TO_CONFIRM
 }
 
 enum CouponType {
@@ -314,6 +315,11 @@ model Address {
 model Order {
   id                  Int                  @id @default(autoincrement())
   orderNumber         String               @unique @db.VarChar(40)
+  checkoutKey         String?              @unique @db.VarChar(64)
+  checkoutHash        String?              @db.VarChar(64)
+  shippingQuoted      Boolean              @default(true)
+  carrier             String?              @db.VarChar(120)
+  trackingNumber      String?              @db.VarChar(120)
   customerId          Int?
   couponId            Int?
   status              OrderStatus          @default(PENDING)

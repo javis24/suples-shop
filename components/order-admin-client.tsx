@@ -2,6 +2,7 @@
 
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { allowedNextStages } from "@/lib/order-stages";
 import { AdminSidebar, type AdminSidebarUser } from "@/components/admin-sidebar";
 
 type OrderStatus = "PENDING" | "CONFIRMED" | "PREPARING" | "SHIPPED" | "DELIVERED" | "CANCELED";
@@ -15,7 +16,7 @@ type OrderSummary = {
   total: string | number;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
-  paymentMethod: "CASH" | "TRANSFER" | "ONLINE";
+  paymentMethod: "TO_CONFIRM" | "CASH" | "TRANSFER" | "ONLINE";
   createdAt: string;
   items: OrderItem[];
 };
@@ -37,6 +38,9 @@ type OrderDetail = OrderSummary & {
   subtotal: string | number;
   discount: string | number;
   shipping: string | number;
+  shippingQuoted: boolean;
+  carrier: string | null;
+  trackingNumber: string | null;
   shippingAddress: Record<string, unknown>;
   statusHistory: Array<{
     id: number;
@@ -124,10 +128,16 @@ export function OrderAdminClient() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [customerWhatsAppUrl, setCustomerWhatsAppUrl] = useState("");
 
   const [draftStatus, setDraftStatus] = useState<OrderStatus>("PENDING");
   const [draftPayment, setDraftPayment] = useState<PaymentStatus>("PENDING");
   const [statusNote, setStatusNote] = useState("");
+  const [draftMethod, setDraftMethod] = useState<OrderSummary["paymentMethod"]>("TO_CONFIRM");
+  const [draftShippingQuoted, setDraftShippingQuoted] = useState(false);
+  const [draftShipping, setDraftShipping] = useState("0");
+  const [draftCarrier, setDraftCarrier] = useState("");
+  const [draftTracking, setDraftTracking] = useState("");
   const [draftItems, setDraftItems] = useState<Array<{ variantId: number; quantity: number; label: string; price: number }>>([]);
   const [productQuery, setProductQuery] = useState("");
   const [productResults, setProductResults] = useState<ProductResult[]>([]);
@@ -166,11 +176,17 @@ export function OrderAdminClient() {
   async function openOrder(id: number) {
     setBusy(true);
     setNotice("");
+    setCustomerWhatsAppUrl("");
     try {
       const result = await request<OrderDetail>(`/api/orders/${id}`);
       setSelected(result.data);
       setDraftStatus(result.data.status);
       setDraftPayment(result.data.paymentStatus);
+      setDraftMethod(result.data.paymentMethod);
+      setDraftShippingQuoted(result.data.shippingQuoted);
+      setDraftShipping(String(result.data.shipping));
+      setDraftCarrier(result.data.carrier || "");
+      setDraftTracking(result.data.trackingNumber || "");
       setDraftItems(
         result.data.items
           .filter((item) => item.variantId)
@@ -201,6 +217,11 @@ export function OrderAdminClient() {
         body: JSON.stringify({
           status: draftStatus,
           paymentStatus: draftPayment,
+          paymentMethod: draftMethod,
+          shippingQuoted: draftShippingQuoted,
+          ...(draftShippingQuoted ? { shipping: Number(draftShipping) } : {}),
+          carrier: draftCarrier || null,
+          trackingNumber: draftTracking || null,
           note: statusNote || null,
         }),
       });
@@ -306,8 +327,12 @@ export function OrderAdminClient() {
         `/api/orders/${selected.id}/whatsapp`,
         { method: "POST" },
       );
-      if (result.data.url) window.open(result.data.url, "_blank", "noopener,noreferrer");
+      if (result.data.url) {
+        setCustomerWhatsAppUrl(result.data.url);
+        setNotice("Mensaje preparado. Usa Abrir conversación para enviarlo.");
+      }
       await openOrder(selected.id);
+      if (result.data.url) setCustomerWhatsAppUrl(result.data.url);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "No se pudo preparar WhatsApp.");
     } finally {
@@ -384,9 +409,10 @@ export function OrderAdminClient() {
               <>
                 <div className="order-detail-heading">
                   <div><span className="eyebrow dark">DETALLE</span><h2>{selected.orderNumber}</h2><p>{selected.customerName} · {selected.customerPhone || "Sin teléfono"}</p></div>
-                  <button disabled={busy} onClick={() => void openWhatsApp()} type="button">Abrir WhatsApp</button>
+                  <button disabled={busy} onClick={() => void openWhatsApp()} type="button">Contactar al cliente</button>
                 </div>
 
+                {customerWhatsAppUrl ? <a className="order-customer-whatsapp" href={customerWhatsAppUrl} target="_blank" rel="noreferrer">Abrir conversación en WhatsApp</a> : null}
                 <div className="order-summary-cards">
                   <div><small>Total</small><strong>{money.format(Number(selected.total))}</strong></div>
                   <div><small>Productos</small><strong>{selected.items.reduce((sum, item) => sum + item.quantity, 0)}</strong></div>
@@ -396,9 +422,13 @@ export function OrderAdminClient() {
                 <section className="order-section">
                   <h3>Estado y pago</h3>
                   <form className="order-status-form" onSubmit={saveOrderStatus}>
-                    <label>Estado<select value={draftStatus} onChange={(event) => setDraftStatus(event.target.value as OrderStatus)}>{Object.entries(orderLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                    <label>Estado<select value={draftStatus} onChange={(event) => setDraftStatus(event.target.value as OrderStatus)}>{allowedNextStages(selected.status).map(value => <option key={value} value={value}>{orderLabels[value]}</option>)}</select></label>
                     <label>Pago<select value={draftPayment} onChange={(event) => setDraftPayment(event.target.value as PaymentStatus)}>{Object.entries(paymentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                    <label className="order-note-field">Nota<input value={statusNote} onChange={(event) => setStatusNote(event.target.value)} placeholder="Ej. Cliente confirmó por WhatsApp" /></label>
+                    <label>Método de pago<select value={draftMethod} onChange={event => setDraftMethod(event.target.value as OrderSummary["paymentMethod"])} disabled={selected.status === "CANCELED"}>
+                      <option value="TO_CONFIRM">Por acordar por WhatsApp</option><option value="CASH">Efectivo</option><option value="TRANSFER">Transferencia</option>
+                      {selected.paymentMethod === "ONLINE" ? <option value="ONLINE">Pago en línea (pedido anterior)</option> : null}
+                    </select></label>
+                    <label className="order-note-field">Nota<input required={draftStatus === "CANCELED" && selected.status !== "CANCELED"} maxLength={255} value={statusNote} onChange={(event) => setStatusNote(event.target.value)} placeholder="Confirmación, motivo de cancelación o aclaración de pago" /></label>
                     <button disabled={busy} type="submit">Guardar cambios</button>
                   </form>
                 </section>
@@ -439,6 +469,19 @@ export function OrderAdminClient() {
                 <section className="order-section">
                   <h3>Entrega</h3>
                   <p className="order-address">{addressText(selected.shippingAddress)}</p>
+                  {selected.shippingAddress.references ? <p className="order-address">Referencias: {String(selected.shippingAddress.references)}</p> : null}
+                  <p className="order-address">Envío: {selected.shippingQuoted ? money.format(Number(selected.shipping)) : "Pendiente de cotizar"}</p>
+                  <div className="order-delivery-fields">
+                    <label className="order-quote-toggle"><input type="checkbox" checked={draftShippingQuoted}
+                      disabled={selected.paymentStatus === "PAID" || ["SHIPPED", "DELIVERED", "CANCELED"].includes(selected.status)}
+                      onChange={event => setDraftShippingQuoted(event.target.checked)} />Costo de envío confirmado</label>
+                    <label>Costo de envío (MXN)<input type="number" min="0" max="99999" step="0.01" value={draftShipping}
+                      disabled={!draftShippingQuoted || selected.paymentStatus === "PAID" || ["SHIPPED", "DELIVERED", "CANCELED"].includes(selected.status)}
+                      onChange={event => setDraftShipping(event.target.value)} /></label>
+                    <label>Paquetería o repartidor<input maxLength={120} value={draftCarrier} disabled={selected.status === "CANCELED"} onChange={event => setDraftCarrier(event.target.value)} /></label>
+                    <label>Guía o referencia de entrega<input maxLength={120} value={draftTracking} disabled={selected.status === "CANCELED"} onChange={event => setDraftTracking(event.target.value)} /></label>
+                  </div>
+                  <p className="order-address">Usa Guardar cambios en Estado y pago para guardar también estos datos.</p>
                   {selected.notes ? <p className="order-notes"><strong>Notas:</strong> {selected.notes}</p> : null}
                 </section>
 
@@ -457,7 +500,7 @@ export function OrderAdminClient() {
 
                 <section className="order-section">
                   <div className="order-section-title"><h3>Bitácora de WhatsApp</h3><span>{selected.whatsappLogs.length} registro(s)</span></div>
-                  <p className="whatsapp-audit-help">Se guarda el texto preparado y la apertura de WhatsApp. Con wa.me no es posible confirmar entrega o lectura del mensaje.</p>
+                  <p className="whatsapp-audit-help">Se guarda el texto preparado para WhatsApp. Con wa.me no es posible confirmar entrega o lectura del mensaje.</p>
                   <div className="whatsapp-log-list">
                     {selected.whatsappLogs.length ? selected.whatsappLogs.map((log) => (
                       <details key={log.id}>
