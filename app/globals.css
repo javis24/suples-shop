@@ -1971,3 +1971,11 @@ th, td { padding: 10px 8px; border-bottom: 1px solid #edf0ed; }
 }
 
 .order-customer-whatsapp { display: flex; align-items: center; justify-content: center; min-height: 44px; margin-top: 12px; padding: 10px; background: #1f9e55; color: #fff; font-size: 13px; font-weight: 700; }
+
+
+/* Colores compartidos por carrito y administración */
+:root {
+  --shop-red: #e51b16;
+  --shop-blue: #e51b16;
+  --shop-blue-dark: #a90f0c;
+}
