@@ -1,10 +1,19 @@
+import { normalizePhone, validPhone } from "@/lib/checkout-policy";
+
 type OrderForWhatsApp = {
   orderNumber: string;
   customerName: string;
   customerEmail: string | null;
   customerPhone: string | null;
   notes: string | null;
-  paymentMethod: "CASH" | "TRANSFER" | "ONLINE";
+  paymentMethod: "TO_CONFIRM" | "CASH" | "TRANSFER" | "ONLINE";
+  shippingQuoted?: boolean;
+  shipping?: unknown;
+  subtotal?: unknown;
+  discount?: unknown;
+  status?: string;
+  carrier?: string | null;
+  trackingNumber?: string | null;
   total: unknown;
   shippingAddress: unknown;
   items: Array<{
@@ -28,6 +37,7 @@ const money = new Intl.NumberFormat("es-MX", {
 });
 
 function paymentLabel(value: OrderForWhatsApp["paymentMethod"]) {
+  if (value === "TO_CONFIRM") return "Por acordar por WhatsApp";
   if (value === "ONLINE") return "Pago en línea con Mercado Pago";
   if (value === "TRANSFER") return "Transferencia bancaria";
   return "Efectivo";
@@ -60,7 +70,7 @@ function addressLine(address: unknown) {
 }
 
 export function buildOrderWhatsApp(order: OrderForWhatsApp, config: StoreWhatsAppConfig) {
-  const businessPhone = config.businessPhone.replace(/\D/g, "");
+  const businessPhone = normalizePhone(config.businessPhone);
   const lines = order.items.map(
     (item) =>
       `• ${item.quantity} × ${item.productName}${item.variantName ? ` (${item.variantName})` : ""}\n  ${money.format(Number(item.unitPrice))} c/u — ${money.format(Number(item.lineTotal))}`,
@@ -98,13 +108,17 @@ export function buildOrderWhatsApp(order: OrderForWhatsApp, config: StoreWhatsAp
     "*PRODUCTOS*",
     ...lines,
     "",
-    `*TOTAL: ${money.format(Number(order.total))}*`,
+    ...(order.shippingQuoted === false
+      ? [`*TOTAL DE PRODUCTOS: ${money.format(Number(order.total))}*`, "Envío a domicilio: costo por confirmar. No incluido en este importe."]
+      : [`Envío: ${money.format(Number(order.shipping ?? 0))}`, `*TOTAL: ${money.format(Number(order.total))}*`]),
     `*FORMA DE PAGO: ${paymentLabel(order.paymentMethod)}*`,
     "",
-    "*DATOS DE ENTREGA*",
+    "*DATOS DE ENTREGA A DOMICILIO*",
     addressLine(order.shippingAddress),
     ...(references ? [`Referencias: ${references}`] : []),
     ...(order.notes ? ["", `Notas: ${order.notes}`] : []),
+    ...(order.carrier ? ["Paquetería: " + order.carrier] : []),
+    ...(order.trackingNumber ? ["Guía: " + order.trackingNumber] : []),
     ...transfer,
     ...onlinePayment,
   ].join("\n");
@@ -112,7 +126,7 @@ export function buildOrderWhatsApp(order: OrderForWhatsApp, config: StoreWhatsAp
   return {
     destination: businessPhone,
     message,
-    url: businessPhone
+    url: validPhone(businessPhone)
       ? `https://wa.me/${businessPhone}?text=${encodeURIComponent(message)}`
       : "",
   };
@@ -120,11 +134,24 @@ export function buildOrderWhatsApp(order: OrderForWhatsApp, config: StoreWhatsAp
 
 export function storeWhatsAppConfig() {
   return {
-    businessPhone: (process.env.STORE_WHATSAPP_NUMBER ?? "").replace(/\D/g, ""),
+    businessPhone: normalizePhone(process.env.STORE_WHATSAPP_NUMBER ?? ""),
     bank: {
       name: process.env.STORE_BANK_NAME ?? "",
       holder: process.env.STORE_BANK_HOLDER ?? "",
       clabe: (process.env.STORE_BANK_CLABE ?? "").replace(/\s/g, ""),
     },
   };
+}
+
+export function buildCustomerWhatsApp(order: OrderForWhatsApp) {
+  const labels: Record<string, string> = {
+    PENDING: "Pendiente de confirmar", CONFIRMED: "Confirmado",
+    PREPARING: "En preparación", SHIPPED: "Enviado", DELIVERED: "Entregado", CANCELED: "Cancelado",
+  };
+  const result = buildOrderWhatsApp(order, { businessPhone: order.customerPhone ?? "" });
+  const body = result.message.split("\n");
+  body[0] = "Hola " + order.customerName + ", somos Suples Shop. Este es el resumen de tu pedido:";
+  body.splice(2, 0, "Estado: " + (labels[order.status ?? "PENDING"] ?? order.status));
+  const message = body.join("\n");
+  return { ...result, message, url: result.url ? "https://wa.me/" + result.destination + "?text=" + encodeURIComponent(message) : "" };
 }

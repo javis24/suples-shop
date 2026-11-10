@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ApiError, handleApiError, ok, parseId } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { lockOrder, orderTransaction } from "@/lib/order-transaction";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -22,7 +23,8 @@ export async function PUT(request: Request, context: Context) {
     const id = parseId((await context.params).id);
     const data = schema.parse(await request.json());
 
-    const order = await prisma.$transaction(async (tx) => {
+    const order = await orderTransaction(prisma, async (tx) => {
+      await lockOrder(tx, id);
       const existing = await tx.order.findUnique({
         where: { id },
         include: { items: true, coupon: true },
@@ -64,6 +66,7 @@ export async function PUT(request: Request, context: Context) {
 
       const byId = new Map(variants.map((variant) => [variant.id, variant]));
       for (const [variantId, quantity] of desired) {
+        if (quantity > 100) throw new ApiError(422, "Máximo 100 unidades por presentación");
         const variant = byId.get(variantId);
         if (!variant || variant.product.status !== "ACTIVE") {
           throw new ApiError(409, "Uno o más productos están inactivos");
@@ -78,7 +81,7 @@ export async function PUT(request: Request, context: Context) {
       }
 
       const allVariantIds = new Set([...oldByVariant.keys(), ...desired.keys()]);
-      for (const variantId of allVariantIds) {
+      for (const variantId of [...allVariantIds].sort((a, b) => a - b)) {
         const previousOrdered = oldByVariant.get(variantId) ?? 0;
         const nextOrdered = desired.get(variantId) ?? 0;
         const stockDelta = previousOrdered - nextOrdered;
@@ -109,7 +112,7 @@ export async function PUT(request: Request, context: Context) {
             variantId,
             type: stockDelta > 0 ? "RETURN" : "SALE",
             quantity: stockDelta,
-            previousStock: before.stock,
+            previousStock: after.stock - stockDelta,
             newStock: after.stock,
             reason: "Edición administrativa de pedido",
             reference: existing.orderNumber,

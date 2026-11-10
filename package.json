@@ -16,7 +16,8 @@
     "db:studio": "prisma studio",
     "test": "node --test tests/*.test.mjs",
     "test:smoke": "node scripts/smoke.mjs",
-    "test:diagnostic": "node scripts/diagnostic.mjs"
+    "test:diagnostic": "node scripts/diagnostic.mjs",
+    "test:checkout:e2e": "node scripts/checkout-e2e.mjs"
   },
   "dependencies": {
     "@prisma/adapter-mariadb": "^7.9.1",
