@@ -1,6 +1,7 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { CatalogImport } from "@/components/catalog-import";
 import Link from "next/link";
 import { AdminSidebar } from "@/components/admin-sidebar";
 
@@ -42,7 +43,6 @@ export function DashboardClient() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -77,29 +77,6 @@ export function DashboardClient() {
       await loadDashboard();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "No fue posible iniciar sesión.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function importExcel(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const file = fileRef.current?.files?.[0];
-    if (!file) return setNotice("Selecciona el archivo ExportacionWeb.xlsx.");
-    setBusy(true);
-    setNotice("Procesando el catálogo; la primera carga puede tardar varios minutos…");
-    const data = new FormData(form);
-    try {
-      const result = await api<{ totalRows: number; createdRows: number; updatedRows: number; skippedRows: number; errorRows: number }>("/api/imports/products", {
-        method: "POST",
-        body: data,
-      });
-      setNotice(`Importación terminada: ${result.createdRows} creados, ${result.updatedRows} actualizados, ${result.skippedRows} omitidos y ${result.errorRows} errores.`);
-      form.reset();
-      await loadDashboard();
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "No se pudo importar el archivo.");
     } finally {
       setBusy(false);
     }
@@ -157,12 +134,9 @@ export function DashboardClient() {
 
         <section className="admin-grid">
           <article className="panel import-panel" id="importar">
-            <div className="panel-heading"><div><span className="eyebrow dark">ACTUALIZACIÓN DE CATÁLOGO</span><h2>Importar ExportacionWeb.xlsx</h2></div><span className="status-dot">LISTO</span></div>
+            <div className="panel-heading"><div><span className="eyebrow dark">ACTUALIZACIÓN DE CATÁLOGO</span><h2>Importar catálogo de Microsip</h2></div><span className="status-dot">LISTO</span></div>
             <p>Lee SKU, nombre, categoría, existencia y precio público. Los productos existentes se reconocen por SKU para evitar duplicados.</p>
-            <form className="import-form" onSubmit={importExcel}>
-              <label className="file-drop"><input accept=".xlsx" name="file" ref={fileRef} required type="file" /><span className="upload-icon">⇧</span><strong>Selecciona ExportacionWeb.xlsx</strong><small>Archivo .xlsx · Máximo 5 MB</small></label>
-              <button className="primary-admin-action import-new-action" disabled={busy} type="submit">{busy ? "Importando…" : "Crear nuevos y actualizar precios"}</button>
-            </form>
+            <CatalogImport onImported={loadDashboard} />
             <div className="import-warning"><strong>Filtro automático</strong><span>No se importan BETHA, TRT, Hormonas, SARMS ni Péptidos. La descripción, imágenes y SEO que agregues manualmente se conservan.</span></div>
           </article>
 

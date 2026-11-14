@@ -1,3 +1,4 @@
+import { lockInventory } from "@/lib/inventory-lock";
 import { z } from "zod";
 
 import { ApiError, handleApiError, ok } from "@/lib/api";
@@ -46,6 +47,7 @@ export async function POST(request: Request) {
 
     const result = await prisma.$transaction(
       async (tx) => {
+      await lockInventory(tx);
         const products = await tx.product.findMany({
           where: { id: { in: productIds } },
           include: {

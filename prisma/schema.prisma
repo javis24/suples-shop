@@ -231,6 +231,8 @@ model PriceHistory {
 }
 
 model ImportBatch {
+  exportedAt         DateTime?
+  reconciliation     Json?
   id                 Int                 @id @default(autoincrement())
   fileName           String              @db.VarChar(255)
   status             ImportStatus        @default(PROCESSING)
@@ -316,6 +318,7 @@ model Order {
   id                  Int                  @id @default(autoincrement())
   orderNumber         String               @unique @db.VarChar(40)
   checkoutKey         String?              @unique @db.VarChar(64)
+  microsipIncludedAt  DateTime?
   checkoutHash        String?              @db.VarChar(64)
   shippingQuoted      Boolean              @default(true)
   carrier             String?              @db.VarChar(120)

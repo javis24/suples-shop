@@ -1,3 +1,4 @@
+import { lockInventory } from "@/lib/inventory-lock";
 import { type NextRequest } from "next/server";
 import {
   created,
@@ -104,7 +105,9 @@ export async function POST(request: Request) {
     await requireUser(["ADMIN", "STAFF"]);
     const data = productSchema.parse(await request.json());
 
-    const product = await prisma.product.create({
+    const product = await prisma.$transaction(async tx => {
+      await lockInventory(tx);
+      return tx.product.create({
       data: {
         name: data.name,
         slug: slugify(data.slug || data.name),
@@ -145,6 +148,7 @@ export async function POST(request: Request) {
           : undefined,
       },
       include: productInclude(true),
+      });
     });
 
     return created(product);

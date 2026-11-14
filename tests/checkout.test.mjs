@@ -21,6 +21,7 @@ function harness() {
   const state = { order: null, stock: 5, movements: 0, logs: 0, writes: 0, failLog: false };
   const variant = () => ({ id: 1, sku: "TEST-1", stock: state.stock, price: "125.50", active: true, presentation: "300 g", flavor: "Limón", product: { status: "ACTIVE", name: "Creatina de prueba" } });
   const tx = {
+    $queryRaw: async () => [{ id: 1 }],
     productVariant: {
       findMany: async () => [variant()],
       updateMany: async ({ where, data }) => {
@@ -163,7 +164,7 @@ test("bloqueo de pedido usa parámetros y rechaza IDs inexistentes", async () =>
 });
 test("reintenta conflictos transaccionales, pero no errores de negocio", async () => {
   let attempts = 0;
-  const db = { $transaction: async callback => { if (++attempts < 3) throw { code: "P2034" }; return callback({}); } };
+  const db = { $transaction: async callback => { if (++attempts < 3) throw { code: "P2034" }; return callback({ $queryRaw: async () => [{ id: 1 }] }); } };
   assert.equal(await orderTransaction(db, async () => "ok"), "ok"); assert.equal(attempts, 3);
   attempts = 0;
   await assert.rejects(orderTransaction({ $transaction: async () => { attempts++; throw new Error("negocio"); } }, async () => 0), /negocio/);

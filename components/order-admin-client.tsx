@@ -33,6 +33,7 @@ type OrderItem = {
 };
 
 type OrderDetail = OrderSummary & {
+  microsipIncludedAt: string | null;
   customerEmail: string | null;
   notes: string | null;
   subtotal: string | number;
@@ -240,7 +241,7 @@ export function OrderAdminClient() {
     () =>
       Boolean(
         selected &&
-          selected.paymentStatus !== "PAID" &&
+          !selected.microsipIncludedAt && selected.paymentStatus !== "PAID" &&
           !["SHIPPED", "DELIVERED", "CANCELED"].includes(selected.status),
       ),
     [selected],
@@ -468,6 +469,7 @@ export function OrderAdminClient() {
 
                 <section className="order-section">
                   <h3>Entrega</h3>
+                  {selected.microsipIncludedAt && <p className="order-notes"><strong>Pedido conciliado con Microsip.</strong> Si lo cancelas, registra también la devolución en Microsip y sube un Excel actualizado. Las unidades se volverán a ofrecer al importar esa devolución.</p>}
                   <p className="order-address">{addressText(selected.shippingAddress)}</p>
                   {selected.shippingAddress.references ? <p className="order-address">Referencias: {String(selected.shippingAddress.references)}</p> : null}
                   <p className="order-address">Envío: {selected.shippingQuoted ? money.format(Number(selected.shipping)) : "Pendiente de cotizar"}</p>

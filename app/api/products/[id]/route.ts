@@ -1,3 +1,4 @@
+import { lockInventory } from "@/lib/inventory-lock";
 import { ApiError, handleApiError, ok, parseId } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -34,6 +35,7 @@ export async function PATCH(request: Request, context: Context) {
     const data = productUpdateSchema.parse(await request.json());
 
     const product = await prisma.$transaction(async (tx) => {
+      await lockInventory(tx);
       const existing = await tx.product.findUnique({
         where: { id },
         include: { variants: true },
@@ -171,12 +173,15 @@ export async function DELETE(_request: Request, context: Context) {
   try {
     await requireUser(["ADMIN"]);
     const id = parseId((await context.params).id);
-    const product = await prisma.product.update({
+    const product = await prisma.$transaction(async tx => {
+      await lockInventory(tx);
+      return tx.product.update({
       where: { id },
       data: {
         status: "ARCHIVED",
         variants: { updateMany: { where: {}, data: { active: false } } },
       },
+      });
     });
     return ok({ id: product.id, archived: true });
   } catch (error) {

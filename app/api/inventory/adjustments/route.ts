@@ -1,3 +1,4 @@
+import { lockInventory } from "@/lib/inventory-lock";
 import { z } from "zod";
 import { ApiError, created, handleApiError } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
     const data = schema.parse(await request.json());
 
     const movement = await prisma.$transaction(async (tx) => {
+      await lockInventory(tx);
       const variant = await tx.productVariant.findUnique({
         where: { id: data.variantId },
       });

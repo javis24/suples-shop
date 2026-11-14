@@ -30,6 +30,7 @@ export async function PUT(request: Request, context: Context) {
         include: { items: true, coupon: true },
       });
       if (!existing) throw new ApiError(404, "Pedido no encontrado");
+      if (existing.microsipIncludedAt) throw new ApiError(409, "Este pedido ya está incluido en Microsip. Sus productos no pueden editarse aquí; registra la cancelación/devolución en Microsip y actualiza el Excel.");
       if (
         existing.paymentStatus === "PAID" ||
         ["SHIPPED", "DELIVERED", "CANCELED"].includes(existing.status)
