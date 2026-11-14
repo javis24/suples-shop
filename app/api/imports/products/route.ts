@@ -1,11 +1,13 @@
 import { Prisma } from "@/app/generated/prisma/client";
-import { ApiError, created, handleApiError } from "@/lib/api";
+import { ApiError, created, handleApiError, ok } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import {
   buildProductSourceKey,
   normalizeProductKey,
   parseMicrosipPriceList,
 } from "@/lib/microsip-excel";
+import { lockInventory } from "@/lib/inventory-lock";
+import { availableFromSnapshot, exportDate, fileHash, liveOrdersWhere, parseIncludedIds, reconciliationSelect, reservationPlan, reviewToken, snapshotHash, verifyReview } from "@/lib/import-reconciliation";
 import { prisma } from "@/lib/prisma";
 import { microsipSku, slugify } from "@/lib/slug";
 
@@ -62,10 +64,34 @@ export async function POST(request: Request) {
     if (parsed.format !== "WEB_EXPORT") {
       throw new ApiError(
         422,
-        "Este importador solamente acepta ExportacionWeb.xlsx para evitar duplicar el catálogo anterior",
+        "El archivo debe contener SKU, nombre, categoría, existencia y precio público en el formato de Microsip",
       );
     }
 
+
+    if (parsed.duplicateRows.some(row => row.message.includes("diferente"))) {
+      throw new ApiError(422, "Hay claves repetidas con precios o existencias diferentes. Corrige el Excel antes de importar.");
+    }
+    const invalid = parsed.skippedRows.filter(row => /no es válido|no es válida|no tiene un precio válido/.test(row.message));
+    if (invalid.length) throw new ApiError(422, "El Excel contiene filas con nombre, precio o existencia inválidos. Corrígelas antes de importar.", invalid.map(row => ({ fila: row.sourceRow, motivo: row.message })));
+    const fingerprint = fileHash(new Uint8Array(await file.arrayBuffer()));
+    if (formData.get("mode") === "preview") {
+      const preview = await prisma.$transaction(async tx => {
+        await lockInventory(tx);
+        const orders = await tx.order.findMany({ where: liveOrdersWhere, select: reconciliationSelect, orderBy: { id: "asc" } });
+        const last = await tx.importBatch.findFirst({ where: { status: "COMPLETED" }, orderBy: { id: "desc" }, select: { id: true, exportedAt: true } });
+        return {
+          orders, lastExportedAt: last?.exportedAt ?? null,
+          token: reviewToken(user.id, fingerprint, snapshotHash(orders, last?.id ?? null)),
+          products: parsed.products.length, skippedRows: parsed.skippedRows.length,
+          duplicateRows: parsed.duplicateRows.length,
+        };
+      }, { timeout: 20000, maxWait: 20000 });
+      return ok(preview);
+    }
+    if (formData.get("confirmSnapshot") !== "true") throw new ApiError(422, "Confirma que el Excel es el catálogo completo y revisaste los pedidos incluidos.");
+    const includedIds = parseIncludedIds(formData.get("includedOrderIds"));
+    const token = String(formData.get("reviewToken") ?? "");
     const snapshotAt = new Date();
     const batch = await prisma.importBatch.create({
       data: {
@@ -82,6 +108,13 @@ export async function POST(request: Request) {
 
     const result = await prisma.$transaction(
       async (tx) => {
+        await lockInventory(tx);
+        const orders = await tx.order.findMany({ where: liveOrdersWhere, select: reconciliationSelect, orderBy: { id: "asc" } });
+        const last = await tx.importBatch.findFirst({ where: { status: "COMPLETED" }, orderBy: { id: "desc" }, select: { id: true, exportedAt: true } });
+        verifyReview(token, user.id, fingerprint, snapshotHash(orders, last?.id ?? null));
+        const exportedAt = exportDate(formData.get("exportedAt"), last?.exportedAt ?? null);
+        const reservations = reservationPlan(orders, includedIds, exportedAt);
+        const seenVariantIds = new Set<number>();
         const rowsByProductKey = new Map<
           string,
           typeof parsed.products
@@ -198,11 +231,15 @@ export async function POST(request: Request) {
           }
         }
 
-        const findExistingVariant = (
-          row: (typeof parsed.products)[number],
-        ) =>
-          existingByKey.get(row.key) ??
-          existingByName.get(normalizeProductKey(row.name));
+        const findExistingVariant = (row: (typeof parsed.products)[number]) => {
+          const exact = existingByKey.get(row.key);
+          if (exact) return exact;
+          const byName = existingByName.get(normalizeProductKey(row.name));
+          if (byName && row.sku && byName.barcode && buildProductSourceKey(byName.barcode, row.name) !== row.key) {
+            throw new ApiError(409, "El nombre " + row.name + " coincide con un producto que tiene otro SKU. Revisa esa identidad antes de importar.");
+          }
+          return byName;
+        };
 
         const productsByImportKey = new Map(
           productsWithImportKey.map((product) => [product.importKey!, product]),
@@ -333,6 +370,9 @@ export async function POST(request: Request) {
 
             if (existing) {
               const previousPrice = Number(existing.price);
+              if (seenVariantIds.has(existing.id)) throw new ApiError(409, "Dos filas del Excel coinciden con el mismo producto. Revisa sus SKU y nombres antes de importar.");
+              seenVariantIds.add(existing.id);
+              const availableStock = availableFromSnapshot(row.stock, reservations.get(existing.id) ?? 0, row.name);
               const previousStock = existing.stock;
               const changedParent = existing.productId !== parentProductId;
 
@@ -345,19 +385,19 @@ export async function POST(request: Request) {
                   flavor: row.flavor,
                   presentation: row.presentation,
                   price: row.price,
-                  stock: row.stock,
+                  stock: availableStock,
                   active: true,
                   lastSeenAt: snapshotAt,
                 },
               });
 
-              if (previousStock !== row.stock) {
+              if (previousStock !== availableStock) {
                 inventoryMovements.push({
                   variantId: existing.id,
                   type: "IMPORT",
-                  quantity: row.stock - previousStock,
+                  quantity: availableStock - previousStock,
                   previousStock,
-                  newStock: row.stock,
+                  newStock: availableStock,
                   reason: "Existencia actualizada desde ExportacionWeb",
                   importBatchId: batch.id,
                   userId: user.id,
@@ -400,11 +440,11 @@ export async function POST(request: Request) {
                 price: row.price,
                 message: changedParent
                   ? "Se separó como producto independiente"
-                  : previousPrice !== row.price && previousStock !== row.stock
+                  : previousPrice !== row.price && previousStock !== availableStock
                     ? "Se actualizaron precio y existencia"
                     : previousPrice !== row.price
                       ? "Se actualizó el precio"
-                      : previousStock !== row.stock
+                      : previousStock !== availableStock
                         ? "Se actualizó la existencia"
                         : "El producto no presentó cambios",
                 sourceData: json({
@@ -418,6 +458,8 @@ export async function POST(request: Request) {
                   category: row.category,
                   unit: row.unit,
                   excelStock: row.stock,
+                  pendingReserved: reservations.get(existing.id) ?? 0,
+                  availableStock,
                   previousPrice,
                   newPrice: row.price,
                 }),
@@ -447,6 +489,7 @@ export async function POST(request: Request) {
               },
             });
 
+            seenVariantIds.add(createdVariant.id);
             if (row.stock !== 0) {
               inventoryMovements.push({
                 variantId: createdVariant.id,
@@ -496,17 +539,14 @@ export async function POST(request: Request) {
          */
         const unseenVariants = await tx.productVariant.findMany({
           where: {
-            active: true,
             sourceKey: { not: null },
-            OR: [
-              { lastSeenAt: null },
-              { lastSeenAt: { lt: snapshotAt } },
-            ],
+            id: { notIn: [...seenVariantIds] },
           },
           select: { id: true, stock: true },
         });
 
         for (const variant of unseenVariants) {
+          availableFromSnapshot(0, reservations.get(variant.id) ?? 0, "producto ausente del Excel (ID " + variant.id + ")");
           if (variant.stock === 0) continue;
 
           inventoryMovements.push({
@@ -612,6 +652,8 @@ export async function POST(request: Request) {
           where: { id: batch.id },
           data: {
             status: "COMPLETED",
+            exportedAt,
+            reconciliation: json({ includedOrderIds: [...includedIds], pendingOrderIds: orders.filter(order => !includedIds.has(order.id)).map(order => order.id), userId: user.id, fileHash: fingerprint, reservedUnits: [...reservations.values()].reduce((a,b) => a+b, 0) }),
             createdRows,
             updatedRows,
             skippedRows,
@@ -620,7 +662,9 @@ export async function POST(request: Request) {
           },
         });
 
+        if (includedIds.size) await tx.order.updateMany({ where: { id: { in: [...includedIds] }, microsipIncludedAt: null }, data: { microsipIncludedAt: exportedAt } });
         return {
+          reservedUnits: [...reservations.values()].reduce((a,b) => a+b, 0),
           totalRows: parsed.sourceProductRows,
           processedRows: parsed.products.length,
           createdRows,

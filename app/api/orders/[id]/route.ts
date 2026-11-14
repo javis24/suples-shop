@@ -70,7 +70,9 @@ export async function PATCH(request: Request, context: Context) {
         if (!data.note) throw new ApiError(422, "Indica el motivo de cancelación.");
         // The order lock serializes cancellation, item editing and status changes.
         for (const item of [...existing.items].sort((a,b) => (a.variantId ?? 0) - (b.variantId ?? 0))) {
-          if (!item.variantId) continue;
+          // A reconciled sale is already deducted in Microsip. Its return must
+          // be registered there and arrive in a fresh Excel before becoming available.
+          if (!item.variantId || existing.microsipIncludedAt) continue;
           const after = await tx.productVariant.update({
             where: { id: item.variantId }, data: { stock: { increment: item.quantity } },
           });
@@ -90,6 +92,7 @@ export async function PATCH(request: Request, context: Context) {
       if (nextStatus !== existing.status || changedShipping || changedPayment || carrier !== existing.carrier || trackingNumber !== existing.trackingNumber || data.note) {
         const details = [
           data.note,
+          nextStatus === "CANCELED" && existing.microsipIncludedAt ? "Devolución pendiente de registrar en Microsip y actualizar por Excel; no se repuso stock web." : "",
           changedShipping ? "Envío: " + (shippingQuoted ? "$" + shipping.toFixed(2) : "por cotizar") : "",
           changedPayment ? "Pago: " + paymentMethod + " / " + paymentStatus : "",
           carrier !== existing.carrier ? "Paquetería: " + (carrier || "sin asignar") : "",

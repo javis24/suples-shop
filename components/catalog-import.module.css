@@ -1,0 +1,16 @@
+.form { display:grid; gap:16px; min-width:0; }
+.field { display:grid; gap:8px; font-size:14px; font-weight:600; }
+.field input { max-width:100%; min-width:0; padding:12px; border:1px solid #c9d6cf; border-radius:8px; background:white; color:#173a2d; }
+.review { display:grid; gap:14px; padding:16px; background:#f5f8f5; border:1px solid #c9d6cf; border-radius:8px; min-width:0; }
+.review h3, .review p { margin:0; }
+.review p { font-size:14px; line-height:1.55; }
+.orders { max-height:360px; overflow:auto; display:grid; gap:8px; }
+.order { display:flex; gap:12px; align-items:flex-start; padding:12px 4px; font-size:14px; line-height:1.5; }
+.order input { width:20px; height:20px; flex-shrink:0; margin-top:2px; accent-color:#125239; }
+.order span { min-width:0; overflow-wrap:anywhere; }
+.order strong, .order small { display:block; }
+.order small { color:#476256; margin-top:4px; }
+.secondary { padding:12px; border:1px solid #81998d; border-radius:6px; background:white; color:#173a2d; text-align:left; cursor:pointer; }
+.notice { margin:0; font-size:14px; line-height:1.5; overflow-wrap:anywhere; }
+.form button:disabled { opacity:.6; cursor:wait; }
+@media(max-width:600px) { .review { padding:12px; } .order { gap:10px; } }
